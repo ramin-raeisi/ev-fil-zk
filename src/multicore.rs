@@ -55,7 +55,7 @@ impl Worker {
         Waiter { receiver }
     }
 
-    pub fn scope<'a, F, R>(&self, elements: usize, f: F) -> R
+    pub fn scope<'a, F : 'a, R>(&self, elements: usize, f: F) -> R
     where
         F: FnOnce(&rayon::Scope<'a>, usize) -> R + Send,
         R: Send,
@@ -66,7 +66,7 @@ impl Worker {
             elements / *NUM_CPUS
         };
 
-        THREAD_POOL.scope(|scope| f(scope, chunk_size))
+        THREAD_POOL.scope(move |scope| f(scope, chunk_size))
     }
 }
 
