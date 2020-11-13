@@ -263,10 +263,10 @@ fn multiexp_inner<Q, D, G, S>(
         Ok(acc)
     };
 
-    let parts = vec![0..<G::Engine as ScalarEngine>::Fr::NUM_BITS]
+    let parts = (0..<G::Engine as ScalarEngine>::Fr::NUM_BITS).collect::<Vec<_>>()
         .par_chunks(c as usize)
-        .map(|skip| this(bases.clone(), density_map.clone(), exponents.clone(), skip.last()
-            .unwrap().clone().last().unwrap()))
+        .map(|skip| this(bases.clone(), density_map.clone(), exponents.clone(), *skip.first()
+            .unwrap()))
         .collect::<Vec<Result<_, _>>>();
 
     parts
