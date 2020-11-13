@@ -43,6 +43,7 @@ paired = { version = "0.21.0", optional = true }
 rust-gpu-tools = { version = "0.2.2", optional = true }
 ff-cl-gen = { version = "0.2.0", optional = true }
 fs2 = { version = "0.4.3", optional = true }
+fil-ocl = {version = "0.19.4", optional = true}
 
 [dev-dependencies]
 hex-literal = "0.3"
@@ -52,8 +53,8 @@ env_logger = "0.8.1"
 criterion = "0.3.0"
 
 [features]
-default = ["pairing"]
-gpu = ["rust-gpu-tools", "ff-cl-gen", "fs2"]
+default = ["blst"]
+gpu = ["rust-gpu-tools", "ff-cl-gen", "fs2", "fil-ocl"]
 groth16 = []
 
 blst = ["blstrs", "groth16"]
