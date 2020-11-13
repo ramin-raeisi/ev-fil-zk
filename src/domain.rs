@@ -20,7 +20,7 @@ use super::SynthesisError;
 
 use crate::gpu;
 
-use log::{info, warn};
+use log::{info, warn, error};
 
 pub struct EvaluationDomain<E: ScalarEngine, G: Group<E>> {
     coeffs: Vec<G>,

@@ -187,7 +187,6 @@ fn test_xordemo() {
     assert_eq!(4, params.a.len());
 
     // The density of the B query is 2 (two variables are in at least one B term)
-    assert_eq!(2, params.b_g1.len());
     assert_eq!(2, params.b_g2.len());
 
     /*
@@ -233,14 +232,6 @@ fn test_xordemo() {
 
     for (u, a) in u_i.iter().zip(&params.a[..]) {
         assert_eq!(u, a);
-    }
-
-    for (v, b) in v_i
-        .iter()
-        .filter(|&&e| e != Fr::zero())
-        .zip(&params.b_g1[..])
-    {
-        assert_eq!(v, b);
     }
 
     for (v, b) in v_i
@@ -304,9 +295,8 @@ fn test_xordemo() {
     //  a_3 * (5539*x^7 + 27797*x^6 + 6045*x^5 + 56449*x^4 + 58974*x^3 + 36716*x^2 + 58468*x + 8064) +
     {
         // proof A = alpha + A(tau) + delta * r
-        let mut expected_a = delta;
-        expected_a.mul_assign(&r);
-        expected_a.add_assign(&alpha);
+        // NOTE: delta * r is removed!
+        let mut expected_a = alpha;
         expected_a.add_assign(&u_i[0]); // a_0 = 1
         expected_a.add_assign(&u_i[1]); // a_1 = 1
         expected_a.add_assign(&u_i[2]); // a_2 = 1
@@ -321,9 +311,8 @@ fn test_xordemo() {
     // a_3 * (31177*x^7 + 44780*x^6 + 21752*x^5 + 42255*x^3 + 35861*x^2 + 33842*x + 48385)
     {
         // proof B = beta + B(tau) + delta * s
-        let mut expected_b = delta;
-        expected_b.mul_assign(&s);
-        expected_b.add_assign(&beta);
+        // NOTE: delta * s is removed!
+        let mut expected_b = beta;
         expected_b.add_assign(&v_i[0]); // a_0 = 1
         expected_b.add_assign(&v_i[1]); // a_1 = 1
         expected_b.add_assign(&v_i[2]); // a_2 = 1
@@ -346,22 +335,6 @@ fn test_xordemo() {
     //      = 49752*x^6 + 13914*x^5 + 29243*x^4 + 27227*x^3 + 62362*x^2 + 35703*x + 4032
     {
         let mut expected_c = Fr::zero();
-
-        // A * s
-        let mut tmp = proof.a;
-        tmp.mul_assign(&s);
-        expected_c.add_assign(&tmp);
-
-        // B * r
-        let mut tmp = proof.b;
-        tmp.mul_assign(&r);
-        expected_c.add_assign(&tmp);
-
-        // delta * r * s
-        let mut tmp = delta;
-        tmp.mul_assign(&r);
-        tmp.mul_assign(&s);
-        expected_c.sub_assign(&tmp);
 
         // L query answer
         // a_2 = 1, a_3 = 0
