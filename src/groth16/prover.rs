@@ -9,16 +9,13 @@ use rayon::prelude::*;
 
 use super::{ParameterSource, Proof};
 use crate::domain::{EvaluationDomain, Scalar};
-use crate::gpu::{LockedFFTKernel, LockedMultiexpKernel};
-use crate::multicore::{Worker, THREAD_POOL};
 use crate::multiexp::{multiexp, DensityTracker, FullDensity};
 use crate::{
     Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable, BELLMAN_VERSION,
 };
+use futures::future::Future;
 use log::info;
-
-#[cfg(feature = "gpu")]
-use crate::gpu::PriorityLock;
+use crate::gpu::{DEVICE_POOL};
 
 fn eval<E: Engine>(
     lc: &LinearCombination<E>,
@@ -271,9 +268,7 @@ where
     E: Engine,
     C: Circuit<E> + Send,
 {
-    info!("Bellperson {} is being used!", BELLMAN_VERSION);
-
-    THREAD_POOL.install(|| create_proof_batch_priority_inner(circuits, params, r_s, s_s, priority))
+    rayon::scope(|_| create_proof_batch_priority_inner(circuits, params, r_s, s_s, priority))
 }
 
 fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
@@ -308,36 +303,26 @@ where
     let start = Instant::now();
     info!("starting proof timer");
 
-    let worker = Worker::new();
     let input_len = provers[0].input_assignment.len();
     let vk = params.get_vk(input_len)?;
     let n = provers[0].a.len();
 
     // Make sure all circuits have the same input len.
-    for prover in &provers {
+    provers.par_iter().for_each(|prover| {
         assert_eq!(
             prover.a.len(),
             n,
-            "only equaly sized circuits are supported"
+            "only equally sized circuits are supported"
         );
-    }
+    });
 
     let mut log_d = 0;
     while (1 << log_d) < n {
         log_d += 1;
     }
 
-    #[cfg(feature = "gpu")]
-    let prio_lock = if priority {
-        Some(PriorityLock::lock())
-    } else {
-        None
-    };
-
-    let mut fft_kern = Some(LockedFFTKernel::<E>::new(log_d, priority));
-
     let a_s = provers
-        .iter_mut()
+        .par_iter_mut()
         .map(|prover| {
             let mut a =
                 EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.a, Vec::new()))?;
@@ -346,19 +331,19 @@ where
             let mut c =
                 EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.c, Vec::new()))?;
 
-            a.ifft(&worker, &mut fft_kern)?;
-            a.coset_fft(&worker, &mut fft_kern)?;
-            b.ifft(&worker, &mut fft_kern)?;
-            b.coset_fft(&worker, &mut fft_kern)?;
-            c.ifft(&worker, &mut fft_kern)?;
-            c.coset_fft(&worker, &mut fft_kern)?;
+            let mut coeff = vec![&mut a, &mut b, &mut c];
 
-            a.mul_assign(&worker, &b);
+            coeff.par_iter_mut().for_each(|v| {
+                v.ifft(Some(&DEVICE_POOL)).unwrap();
+                v.coset_fft(Some(&DEVICE_POOL)).unwrap();
+            });
+
+            a.mul_assign(&b, Some(&DEVICE_POOL))?;
             drop(b);
-            a.sub_assign(&worker, &c);
+            a.sub_assign(&c, Some(&DEVICE_POOL))?;
             drop(c);
-            a.divide_by_z_on_coset(&worker);
-            a.icoset_fft(&worker, &mut fft_kern)?;
+            a.divide_by_z_on_coset();
+            a.icoset_fft(Some(&DEVICE_POOL))?;
             let mut a = a.into_coeffs();
             let a_len = a.len() - 1;
             a.truncate(a_len);
@@ -369,20 +354,14 @@ where
         })
         .collect::<Result<Vec<_>, SynthesisError>>()?;
 
-    drop(fft_kern);
-    let mut multiexp_kern = Some(LockedMultiexpKernel::<E>::new(log_d, priority));
-
     let h_s = a_s
-        .into_iter()
+        .par_iter()
         .map(|a| {
-            let h = multiexp(
-                &worker,
+            Ok(multiexp(
                 params.get_h(a.len())?,
                 FullDensity,
-                a,
-                &mut multiexp_kern,
-            );
-            Ok(h)
+                a.clone(),
+                Some(&DEVICE_POOL)))
         })
         .collect::<Result<Vec<_>, SynthesisError>>()?;
 
@@ -413,23 +392,20 @@ where
         .collect::<Vec<_>>();
 
     let l_s = aux_assignments
-        .iter()
+        .par_iter()
         .map(|aux_assignment| {
-            let l = multiexp(
-                &worker,
+            Ok(multiexp(
                 params.get_l(aux_assignment.len())?,
                 FullDensity,
                 aux_assignment.clone(),
-                &mut multiexp_kern,
-            );
-            Ok(l)
+                Some(&DEVICE_POOL)))
         })
         .collect::<Result<Vec<_>, SynthesisError>>()?;
 
     let inputs = provers
-        .into_iter()
-        .zip(input_assignments.iter())
-        .zip(aux_assignments.iter())
+        .par_iter()
+        .zip(input_assignments.par_iter())
+        .zip(aux_assignments.par_iter())
         .map(|((prover, input_assignment), aux_assignment)| {
             let a_aux_density_total = prover.a_aux_density.get_total_density();
 
@@ -437,61 +413,55 @@ where
                 params.get_a(input_assignment.len(), a_aux_density_total)?;
 
             let a_inputs = multiexp(
-                &worker,
                 a_inputs_source,
                 FullDensity,
                 input_assignment.clone(),
-                &mut multiexp_kern,
+                Some(&DEVICE_POOL),
             );
 
             let a_aux = multiexp(
-                &worker,
                 a_aux_source,
-                Arc::new(prover.a_aux_density),
+                Arc::new(prover.a_aux_density.clone()),
                 aux_assignment.clone(),
-                &mut multiexp_kern,
+                Some(&DEVICE_POOL),
             );
 
-            let b_input_density = Arc::new(prover.b_input_density);
+            let b_input_density = Arc::new(prover.b_input_density.clone());
             let b_input_density_total = b_input_density.get_total_density();
-            let b_aux_density = Arc::new(prover.b_aux_density);
+            let b_aux_density = Arc::new(prover.b_aux_density.clone());
             let b_aux_density_total = b_aux_density.get_total_density();
 
             let (b_g1_inputs_source, b_g1_aux_source) =
                 params.get_b_g1(b_input_density_total, b_aux_density_total)?;
 
             let b_g1_inputs = multiexp(
-                &worker,
                 b_g1_inputs_source,
                 b_input_density.clone(),
                 input_assignment.clone(),
-                &mut multiexp_kern,
+                Some(&DEVICE_POOL),
             );
 
             let b_g1_aux = multiexp(
-                &worker,
                 b_g1_aux_source,
                 b_aux_density.clone(),
                 aux_assignment.clone(),
-                &mut multiexp_kern,
+                Some(&DEVICE_POOL),
             );
 
             let (b_g2_inputs_source, b_g2_aux_source) =
                 params.get_b_g2(b_input_density_total, b_aux_density_total)?;
 
             let b_g2_inputs = multiexp(
-                &worker,
                 b_g2_inputs_source,
                 b_input_density,
                 input_assignment.clone(),
-                &mut multiexp_kern,
+                Some(&DEVICE_POOL),
             );
             let b_g2_aux = multiexp(
-                &worker,
                 b_g2_aux_source,
                 b_aux_density,
                 aux_assignment.clone(),
-                &mut multiexp_kern,
+                Some(&DEVICE_POOL),
             );
 
             Ok((
@@ -505,17 +475,12 @@ where
         })
         .collect::<Result<Vec<_>, SynthesisError>>()?;
 
-    drop(multiexp_kern);
-
-    #[cfg(feature = "gpu")]
-    drop(prio_lock);
-
     let proofs = h_s
-        .into_iter()
-        .zip(l_s.into_iter())
-        .zip(inputs.into_iter())
-        .zip(r_s.into_iter())
-        .zip(s_s.into_iter())
+        .into_par_iter()
+        .zip(l_s.into_par_iter())
+        .zip(inputs.into_par_iter())
+        .zip(r_s.into_par_iter())
+        .zip(s_s.into_par_iter())
         .map(
             |(
                 (((h, l), (a_inputs, a_aux, b_g1_inputs, b_g1_aux, b_g2_inputs, b_g2_aux)), r),

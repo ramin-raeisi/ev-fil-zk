@@ -3,13 +3,13 @@ mod error;
 pub use self::error::*;
 
 #[cfg(feature = "gpu")]
-mod locks;
-
-#[cfg(feature = "gpu")]
-pub use self::locks::*;
-
-#[cfg(feature = "gpu")]
 mod sources;
+
+#[cfg(feature = "gpu")]
+mod scheduler;
+
+#[cfg(feature = "gpu")]
+pub use scheduler::*;
 
 #[cfg(feature = "gpu")]
 pub use self::sources::*;
@@ -22,6 +22,7 @@ pub use self::utils::*;
 
 #[cfg(feature = "gpu")]
 mod fft;
+mod structs;
 
 #[cfg(feature = "gpu")]
 pub use self::fft::*;

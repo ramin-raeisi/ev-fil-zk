@@ -12,7 +12,9 @@ use crate::{Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError,
 
 use crate::domain::{EvaluationDomain, Scalar};
 
-use crate::multicore::Worker;
+use rayon::current_num_threads;
+use rayon::slice::{ParallelSliceMut, ParallelSlice};
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
 
 /// Generates a random common reference string for
 /// a circuit.
@@ -232,23 +234,23 @@ where
     let gamma_inverse = gamma.inverse().ok_or(SynthesisError::UnexpectedIdentity)?;
     let delta_inverse = delta.inverse().ok_or(SynthesisError::UnexpectedIdentity)?;
 
-    let worker = Worker::new();
-
     let mut h = vec![E::G1::zero(); powers_of_tau.as_ref().len() - 1];
     {
         // Compute powers of tau
         {
             let powers_of_tau = powers_of_tau.as_mut();
-            worker.scope(powers_of_tau.len(), |scope, chunk| {
-                for (i, powers_of_tau) in powers_of_tau.chunks_mut(chunk).enumerate() {
-                    scope.spawn(move |_scope| {
-                        let mut current_tau_power = tau.pow(&[(i * chunk) as u64]);
+            let chunk_size = if powers_of_tau.len() < current_num_threads() {
+                1
+            } else {
+                powers_of_tau.len() / current_num_threads()
+            };
 
-                        for p in powers_of_tau {
-                            p.0 = current_tau_power;
-                            current_tau_power.mul_assign(&tau);
-                        }
-                    });
+            powers_of_tau.par_chunks_mut(chunk_size).enumerate().for_each(|(i, powers_of_tau_int)| {
+                let mut current_tau_power = tau.pow(&[(i * chunk_size) as u64]);
+
+                for p in powers_of_tau_int {
+                    p.0 = current_tau_power;
+                    current_tau_power.mul_assign(&tau);
                 }
             });
         }
@@ -257,34 +259,34 @@ where
         let mut coeff = powers_of_tau.z(&tau);
         coeff.mul_assign(&delta_inverse);
 
+        let chunk_size = if h.len() < current_num_threads() {
+            1
+        } else {
+            h.len() / current_num_threads()
+        };
+
         // Compute the H query with multiple threads
-        worker.scope(h.len(), |scope, chunk| {
-            for (h, p) in h
-                .chunks_mut(chunk)
-                .zip(powers_of_tau.as_ref().chunks(chunk))
-            {
-                let mut g1_wnaf = g1_wnaf.shared();
+        h.par_chunks_mut(chunk_size).zip(powers_of_tau.as_ref().par_chunks(chunk_size)).for_each
+        (|(h,
+              p)| {
+            let mut g1_wnaf = g1_wnaf.shared();
 
-                scope.spawn(move |_scope| {
-                    // Set values of the H query to g1^{(tau^i * t(tau)) / delta}
-                    for (h, p) in h.iter_mut().zip(p.iter()) {
-                        // Compute final exponent
-                        let mut exp = p.0;
-                        exp.mul_assign(&coeff);
+            for (h, p) in h.iter_mut().zip(p.iter()) {
+                // Compute final exponent
+                let mut exp = p.0;
+                exp.mul_assign(&coeff);
 
-                        // Exponentiate
-                        *h = g1_wnaf.scalar(exp.into_repr());
-                    }
-
-                    // Batch normalize
-                    E::G1::batch_normalization(h);
-                });
+                // Exponentiate
+                *h = g1_wnaf.scalar(exp.into_repr());
             }
+
+            // Batch normalize
+            E::G1::batch_normalization(h);
         });
     }
 
     // Use inverse FFT to convert powers of tau to Lagrange coefficients
-    powers_of_tau.ifft(&worker, &mut None)?;
+    powers_of_tau.ifft(None)?;
     let powers_of_tau = powers_of_tau.into_coeffs();
 
     let mut a = vec![E::G1::zero(); assembly.num_inputs + assembly.num_aux];
@@ -318,9 +320,6 @@ where
         // Trapdoors
         alpha: &E::Fr,
         beta: &E::Fr,
-
-        // Worker
-        worker: &Worker,
     ) {
         // Sanity check
         assert_eq!(a.len(), at.len());
@@ -331,79 +330,79 @@ where
         assert_eq!(a.len(), ext.len());
 
         // Evaluate polynomials in multiple threads
-        worker.scope(a.len(), |scope, chunk| {
+        let chunk_size = if a.len() < current_num_threads() {
+            1
+        } else {
+            a.len() / current_num_threads()
+        };
+
+        a.par_chunks_mut(chunk_size)
+            .zip(b_g1.par_chunks_mut(chunk_size))
+            .zip(b_g2.par_chunks_mut(chunk_size))
+            .zip(ext.par_chunks_mut(chunk_size))
+            .zip(at.par_chunks(chunk_size))
+            .zip(bt.par_chunks(chunk_size))
+            .zip(ct.par_chunks(chunk_size)).for_each(|((((((a, b_g1), b_g2), ext), at), bt), ct)| {
+            let mut g1_wnaf = g1_wnaf.shared();
+            let mut g2_wnaf = g2_wnaf.shared();
+
             for ((((((a, b_g1), b_g2), ext), at), bt), ct) in a
-                .chunks_mut(chunk)
-                .zip(b_g1.chunks_mut(chunk))
-                .zip(b_g2.chunks_mut(chunk))
-                .zip(ext.chunks_mut(chunk))
-                .zip(at.chunks(chunk))
-                .zip(bt.chunks(chunk))
-                .zip(ct.chunks(chunk))
+                .iter_mut()
+                .zip(b_g1.iter_mut())
+                .zip(b_g2.iter_mut())
+                .zip(ext.iter_mut())
+                .zip(at.iter())
+                .zip(bt.iter())
+                .zip(ct.iter())
             {
-                let mut g1_wnaf = g1_wnaf.shared();
-                let mut g2_wnaf = g2_wnaf.shared();
+                fn eval_at_tau<E: Engine>(
+                    powers_of_tau: &[Scalar<E>],
+                    p: &[(E::Fr, usize)],
+                ) -> E::Fr {
+                    let mut acc = E::Fr::zero();
 
-                scope.spawn(move |_scope| {
-                    for ((((((a, b_g1), b_g2), ext), at), bt), ct) in a
-                        .iter_mut()
-                        .zip(b_g1.iter_mut())
-                        .zip(b_g2.iter_mut())
-                        .zip(ext.iter_mut())
-                        .zip(at.iter())
-                        .zip(bt.iter())
-                        .zip(ct.iter())
-                    {
-                        fn eval_at_tau<E: Engine>(
-                            powers_of_tau: &[Scalar<E>],
-                            p: &[(E::Fr, usize)],
-                        ) -> E::Fr {
-                            let mut acc = E::Fr::zero();
-
-                            for &(ref coeff, index) in p {
-                                let mut n = powers_of_tau[index].0;
-                                n.mul_assign(coeff);
-                                acc.add_assign(&n);
-                            }
-
-                            acc
-                        }
-
-                        // Evaluate QAP polynomials at tau
-                        let mut at = eval_at_tau(powers_of_tau, at);
-                        let mut bt = eval_at_tau(powers_of_tau, bt);
-                        let ct = eval_at_tau(powers_of_tau, ct);
-
-                        // Compute A query (in G1)
-                        if !at.is_zero() {
-                            *a = g1_wnaf.scalar(at.into_repr());
-                        }
-
-                        // Compute B query (in G1/G2)
-                        if !bt.is_zero() {
-                            let bt_repr = bt.into_repr();
-                            *b_g1 = g1_wnaf.scalar(bt_repr);
-                            *b_g2 = g2_wnaf.scalar(bt_repr);
-                        }
-
-                        at.mul_assign(&beta);
-                        bt.mul_assign(&alpha);
-
-                        let mut e = at;
-                        e.add_assign(&bt);
-                        e.add_assign(&ct);
-                        e.mul_assign(inv);
-
-                        *ext = g1_wnaf.scalar(e.into_repr());
+                    for &(ref coeff, index) in p {
+                        let mut n = powers_of_tau[index].0;
+                        n.mul_assign(coeff);
+                        acc.add_assign(&n);
                     }
 
-                    // Batch normalize
-                    E::G1::batch_normalization(a);
-                    E::G1::batch_normalization(b_g1);
-                    E::G2::batch_normalization(b_g2);
-                    E::G1::batch_normalization(ext);
-                });
+                    acc
+                }
+
+                // Evaluate QAP polynomials at tau
+                let mut at = eval_at_tau(powers_of_tau, at);
+                let mut bt = eval_at_tau(powers_of_tau, bt);
+                let ct = eval_at_tau(powers_of_tau, ct);
+
+                // Compute A query (in G1)
+                if !at.is_zero() {
+                    *a = g1_wnaf.scalar(at.into_repr());
+                }
+
+                // Compute B query (in G1/G2)
+                if !bt.is_zero() {
+                    let bt_repr = bt.into_repr();
+                    *b_g1 = g1_wnaf.scalar(bt_repr);
+                    *b_g2 = g2_wnaf.scalar(bt_repr);
+                }
+
+                at.mul_assign(&beta);
+                bt.mul_assign(&alpha);
+
+                let mut e = at;
+                e.add_assign(&bt);
+                e.add_assign(&ct);
+                e.mul_assign(inv);
+
+                *ext = g1_wnaf.scalar(e.into_repr());
             }
+
+            // Batch normalize
+            E::G1::batch_normalization(a);
+            E::G1::batch_normalization(b_g1);
+            E::G2::batch_normalization(b_g2);
+            E::G1::batch_normalization(ext);
         });
     }
 
@@ -422,7 +421,6 @@ where
         &gamma_inverse,
         &alpha,
         &beta,
-        &worker,
     );
 
     // Evaluate for auxiliary variables.
@@ -440,7 +438,6 @@ where
         &delta_inverse,
         &alpha,
         &beta,
-        &worker,
     );
 
     // Don't allow any elements be unconstrained, so that

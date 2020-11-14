@@ -1,5 +1,4 @@
 use super::error::{GPUError, GPUResult};
-use crate::multicore::Worker;
 use ff::{PrimeField, ScalarEngine};
 use groupy::CurveAffine;
 use std::marker::PhantomData;
@@ -15,11 +14,19 @@ impl<E> FFTKernel<E>
 where
     E: ScalarEngine,
 {
-    pub fn create(_: bool) -> GPUResult<FFTKernel<E>> {
+    pub fn fft(_: &mut [E::Fr], _: &E::Fr, _: u32) -> GPUResult<()> {
         return Err(GPUError::GPUDisabled);
     }
 
-    pub fn radix_fft(&mut self, _: &mut [E::Fr], _: &E::Fr, _: u32) -> GPUResult<()> {
+    pub fn radix_fft(_: &mut [E::Fr], _: &E::Fr, _: u32) -> GPUResult<()> {
+        return Err(GPUError::GPUDisabled);
+    }
+
+    pub fn distribute_powers(_: &mut [E::Fr], _: &E::Fr, _: u32) -> GPUResult<()> {
+        return Err(GPUError::GPUDisabled);
+    }
+
+    pub fn mul_sub(_: &mut [E::Fr], _: &[E::Fr], _: usize, _: bool) -> GPUResult<()> {
         return Err(GPUError::GPUDisabled);
     }
 }
@@ -32,13 +39,9 @@ impl<E> MultiexpKernel<E>
 where
     E: ScalarEngine,
 {
-    pub fn create(_: bool) -> GPUResult<MultiexpKernel<E>> {
-        return Err(GPUError::GPUDisabled);
-    }
-
     pub fn multiexp<G>(
         &mut self,
-        _: &Worker,
+        _: &DevicePool,
         _: Arc<Vec<G>>,
         _: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
         _: usize,
@@ -51,29 +54,12 @@ where
     }
 }
 
-use crate::bls::Engine;
+pub struct DevicePool;
 
-macro_rules! locked_kernel {
-    ($class:ident) => {
-        pub struct $class<E>(PhantomData<E>);
-
-        impl<E> $class<E>
-        where
-            E: Engine,
-        {
-            pub fn new(_: usize, _: bool) -> $class<E> {
-                $class::<E>(PhantomData)
-            }
-
-            pub fn with<F, R, K>(&mut self, _: F) -> GPUResult<R>
-            where
-                F: FnMut(&mut K) -> GPUResult<R>,
-            {
-                return Err(GPUError::GPUDisabled);
-            }
-        }
-    };
+impl Default for DevicePool {
+    fn default() -> Self {
+        Self
+    }
 }
 
-locked_kernel!(LockedFFTKernel);
-locked_kernel!(LockedMultiexpKernel);
+use crate::bls::Engine;

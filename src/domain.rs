@@ -15,12 +15,15 @@ use crate::bls::Engine;
 use ff::{Field, PrimeField, ScalarEngine};
 use groupy::CurveProjective;
 
-use super::multicore::Worker;
 use super::SynthesisError;
 
 use crate::gpu;
 
-use log::{info, warn};
+use rayon::current_num_threads;
+use rayon::slice::{ParallelSliceMut, ParallelSlice};
+use rayon::iter::{ParallelIterator, IndexedParallelIterator, IntoParallelRefMutIterator};
+
+use log::{warn, error};
 
 pub struct EvaluationDomain<E: ScalarEngine, G: Group<E>> {
     coeffs: Vec<G>,
@@ -84,69 +87,76 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
         })
     }
 
-    pub fn fft(
-        &mut self,
-        worker: &Worker,
-        kern: &mut Option<gpu::LockedFFTKernel<E>>,
-    ) -> gpu::GPUResult<()> {
-        best_fft(kern, &mut self.coeffs, worker, &self.omega, self.exp)?;
+    pub fn fft(&mut self, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
+        best_fft(devices, &mut self.coeffs, &self.omega, self.exp)?;
         Ok(())
     }
 
-    pub fn ifft(
-        &mut self,
-        worker: &Worker,
-        kern: &mut Option<gpu::LockedFFTKernel<E>>,
-    ) -> gpu::GPUResult<()> {
-        best_fft(kern, &mut self.coeffs, worker, &self.omegainv, self.exp)?;
+    pub fn mul_all(&mut self, val: E::Fr) {
+        let chunk_size = if self.coeffs.len() < current_num_threads() {
+            1
+        } else {
+            self.coeffs.len() / current_num_threads()
+        };
 
-        worker.scope(self.coeffs.len(), |scope, chunk| {
-            let minv = self.minv;
+        self.coeffs.par_chunks_mut(chunk_size).for_each(|chunk| {
+            for v in chunk.iter_mut() {
+                v.group_mul_assign(&val);
+            }
+        });
+    }
 
-            for v in self.coeffs.chunks_mut(chunk) {
-                scope.spawn(move |_| {
-                    for v in v {
-                        v.group_mul_assign(&minv);
-                    }
-                });
+    pub fn ifft(&mut self, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
+        best_fft(devices, &mut self.coeffs, &self.omegainv, self.exp)?;
+
+        let chunk_size = if self.coeffs.len() < current_num_threads() {
+            1
+        } else {
+            self.coeffs.len() / current_num_threads()
+        };
+
+        let minv = self.minv;
+
+        self.coeffs.par_chunks_mut(chunk_size).for_each(|chunk| {
+            for v in chunk.iter_mut() {
+                v.group_mul_assign(&minv);
             }
         });
 
         Ok(())
     }
 
-    pub fn distribute_powers(&mut self, worker: &Worker, g: E::Fr) {
-        worker.scope(self.coeffs.len(), |scope, chunk| {
-            for (i, v) in self.coeffs.chunks_mut(chunk).enumerate() {
-                scope.spawn(move |_| {
-                    let mut u = g.pow(&[(i * chunk) as u64]);
-                    for v in v.iter_mut() {
-                        v.group_mul_assign(&u);
-                        u.mul_assign(&g);
-                    }
-                });
-            }
-        });
-    }
+    pub fn distribute_powers(&mut self, g: E::Fr, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
+        if let Some(ref devices) = devices {
+            gpu_distribute_powers(&mut self.coeffs, &g, self.exp)?;
+        } else {
+            let chunk_size = if self.coeffs.len() < current_num_threads() {
+                1
+            } else {
+                self.coeffs.len() / current_num_threads()
+            };
 
-    pub fn coset_fft(
-        &mut self,
-        worker: &Worker,
-        kern: &mut Option<gpu::LockedFFTKernel<E>>,
-    ) -> gpu::GPUResult<()> {
-        self.distribute_powers(worker, E::Fr::multiplicative_generator());
-        self.fft(worker, kern)?;
+            self.coeffs.par_chunks_mut(chunk_size).enumerate().for_each(|(i, chunk)| {
+                let mut u = g.pow(&[(i * chunk_size) as u64]);
+                for v in chunk.iter_mut() {
+                    v.group_mul_assign(&u);
+                    u.mul_assign(&g);
+                }
+            });
+        }
         Ok(())
     }
 
-    pub fn icoset_fft(
-        &mut self,
-        worker: &Worker,
-        kern: &mut Option<gpu::LockedFFTKernel<E>>,
-    ) -> gpu::GPUResult<()> {
+    pub fn coset_fft(&mut self, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
+        self.distribute_powers(E::Fr::multiplicative_generator(), devices)?;
+        self.fft(devices)?;
+        Ok(())
+    }
+
+    pub fn icoset_fft(&mut self, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
         let geninv = self.geninv;
-        self.ifft(worker, kern)?;
-        self.distribute_powers(worker, geninv);
+        self.ifft(devices)?;
+        self.distribute_powers(geninv, devices)?;
         Ok(())
     }
 
@@ -162,59 +172,72 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
     /// The target polynomial is the zero polynomial in our
     /// evaluation domain, so we must perform division over
     /// a coset.
-    pub fn divide_by_z_on_coset(&mut self, worker: &Worker) {
+    pub fn divide_by_z_on_coset(&mut self) {
         let i = self
             .z(&E::Fr::multiplicative_generator())
             .inverse()
             .unwrap();
+        let chunk_size = if self.coeffs.len() < current_num_threads() {
+            1
+        } else {
+            self.coeffs.len() / current_num_threads()
+        };
 
-        worker.scope(self.coeffs.len(), |scope, chunk| {
-            for v in self.coeffs.chunks_mut(chunk) {
-                scope.spawn(move |_| {
-                    for v in v {
-                        v.group_mul_assign(&i);
-                    }
-                });
+        self.coeffs.par_chunks_mut(chunk_size).for_each(|chunk| {
+            for v in chunk {
+                v.group_mul_assign(&i);
             }
         });
     }
 
     /// Perform O(n) multiplication of two polynomials in the domain.
-    pub fn mul_assign(&mut self, worker: &Worker, other: &EvaluationDomain<E, Scalar<E>>) {
+    pub fn mul_assign(&mut self, other: &EvaluationDomain<E, Scalar<E>>, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
         assert_eq!(self.coeffs.len(), other.coeffs.len());
+        if let Some(ref devices) = devices {
+            let n = self.coeffs.len();
+            gpu_mul(&mut self.coeffs, &other.coeffs, n)?;
+        } else {
+            let chunk_size = if self.coeffs.len() < current_num_threads() {
+                1
+            } else {
+                self.coeffs.len() / current_num_threads()
+            };
 
-        worker.scope(self.coeffs.len(), |scope, chunk| {
-            for (a, b) in self
-                .coeffs
-                .chunks_mut(chunk)
-                .zip(other.coeffs.chunks(chunk))
-            {
-                scope.spawn(move |_| {
-                    for (a, b) in a.iter_mut().zip(b.iter()) {
+            self.coeffs.par_chunks_mut(chunk_size)
+                .zip(other.coeffs.par_chunks(chunk_size))
+                .for_each(|(chunk, other_chunk)| {
+                    for (a, b) in chunk.iter_mut().zip(other_chunk.iter()) {
                         a.group_mul_assign(&b.0);
                     }
                 });
-            }
-        });
+        }
+        Ok(())
     }
 
     /// Perform O(n) subtraction of one polynomial from another in the domain.
-    pub fn sub_assign(&mut self, worker: &Worker, other: &EvaluationDomain<E, G>) {
-        assert_eq!(self.coeffs.len(), other.coeffs.len());
+    pub fn sub_assign(&mut self, other: &EvaluationDomain<E, G>,
+                      devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
+        let len = self.coeffs.len();
+        assert_eq!(len, other.coeffs.len());
 
-        worker.scope(self.coeffs.len(), |scope, chunk| {
-            for (a, b) in self
-                .coeffs
-                .chunks_mut(chunk)
-                .zip(other.coeffs.chunks(chunk))
-            {
-                scope.spawn(move |_| {
-                    for (a, b) in a.iter_mut().zip(b.iter()) {
+        if let Some(ref devices) = devices {
+            gpu_sub(&mut self.coeffs, &other.coeffs, len)?;
+        } else {
+            let chunk_size = if len < current_num_threads() {
+                1
+            } else {
+                len / current_num_threads()
+            };
+
+            self.coeffs.par_chunks_mut(chunk_size)
+                .zip(other.coeffs.par_chunks(chunk_size))
+                .for_each(|(chunk, other_chunk)| {
+                    for (a, b) in chunk.iter_mut().zip(other_chunk.iter()) {
                         a.group_sub_assign(&b);
                     }
                 });
-            }
-        });
+        }
+        Ok(())
     }
 }
 
@@ -287,34 +310,64 @@ impl<E: ScalarEngine> Group<E> for Scalar<E> {
     }
 }
 
+fn log2_floor(num: usize) -> u32 {
+    assert!(num > 0);
+
+    let mut pow = 0;
+
+    while (1 << (pow + 1)) <= num {
+        pow += 1;
+    }
+
+    pow
+}
+
 fn best_fft<E: Engine, T: Group<E>>(
-    kern: &mut Option<gpu::LockedFFTKernel<E>>,
+    devices: Option<&gpu::DevicePool>,
     a: &mut [T],
-    worker: &Worker,
     omega: &E::Fr,
     log_n: u32,
 ) -> gpu::GPUResult<()> {
-    if let Some(ref mut kern) = kern {
-        if kern
-            .with(|k: &mut gpu::FFTKernel<E>| gpu_fft(k, a, omega, log_n))
-            .is_ok()
-        {
-            return Ok(());
+    let enable_gpu_fft: bool = std::env::var("FILZK_DISABLE_FFT_GPU")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FILZK_DISABLE_FFT_GPU! Defaulting to 0...");
+                Ok(true)
+            }
+        })
+        .unwrap_or(true);
+
+    if 1u32 << log_n < 2 << 18 {
+        warn!("FFT elements amount is small (<= 2^18). GPU data transfer may probably take \
+            longer than perfoming FFT on CPU. Consider disabling GPU FFT with environment \
+            variable FILZK_DISABLE_FFT_GPU=1");
+    }
+
+    if enable_gpu_fft {
+        if let Some(ref devices) = devices {
+            match gpu_fft(a, omega, log_n) {
+                Ok(_) => {
+                    return Ok(());
+                }
+                Err(e) => {
+                    error!("GPU FFT failed! Error: {}", e);
+                }
+            }
         }
     }
 
-    let log_cpus = worker.log_num_cpus();
+    let log_cpus = log2_floor(rayon::current_num_threads());
     if log_n <= log_cpus {
         serial_fft(a, omega, log_n);
     } else {
-        parallel_fft(a, worker, omega, log_n, log_cpus);
+        parallel_fft(a, omega, log_n, log_cpus);
     }
 
     Ok(())
 }
 
 pub fn gpu_fft<E: Engine, T: Group<E>>(
-    kern: &mut gpu::FFTKernel<E>,
     a: &mut [T],
     omega: &E::Fr,
     log_n: u32,
@@ -327,7 +380,42 @@ pub fn gpu_fft<E: Engine, T: Group<E>>(
     // For compatibility/performance reasons we decided to transmute the array to the desired type
     // as it seems safe and needs less modifications in the current structure of Bellman library.
     let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
-    kern.radix_fft(a, omega, log_n)?;
+    gpu::FFTKernel::<E>::radix_fft(a, omega, log_n)?;
+    Ok(())
+}
+
+pub fn gpu_mul<E: Engine, T: Group<E>>(
+    a: &mut [T],
+    b: &[Scalar<E>],
+    n: usize,
+) -> gpu::GPUResult<()> {
+    // The reason of unsafety is same as above.
+    let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
+    let b = unsafe { std::mem::transmute::<&[Scalar<E>], &[E::Fr]>(b) };
+    gpu::FFTKernel::<E>::mul_sub(a, b, n, false)?;
+    Ok(())
+}
+
+pub fn gpu_sub<E: Engine, T: Group<E>>(
+    a: &mut [T],
+    b: &[T],
+    n: usize,
+) -> gpu::GPUResult<()> {
+    // The reason of unsafety is same as above.
+    let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
+    let b = unsafe { std::mem::transmute::<&[T], &[E::Fr]>(b) };
+    gpu::FFTKernel::<E>::mul_sub(a, b, n, true)?;
+    Ok(())
+}
+
+pub fn gpu_distribute_powers<E: Engine, T: Group<E>>(
+    a: &mut [T],
+    g: &E::Fr,
+    log_n: u32,
+) -> gpu::GPUResult<()> {
+    // The reason of unsafety is same as above.
+    let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
+    gpu::FFTKernel::<E>::distribute_powers(a, g, log_n)?;
     Ok(())
 }
 
@@ -377,7 +465,6 @@ pub fn serial_fft<E: ScalarEngine, T: Group<E>>(a: &mut [T], omega: &E::Fr, log_
 
 fn parallel_fft<E: ScalarEngine, T: Group<E>>(
     a: &mut [T],
-    worker: &Worker,
     omega: &E::Fr,
     log_n: u32,
     log_cpus: u32,
@@ -388,62 +475,56 @@ fn parallel_fft<E: ScalarEngine, T: Group<E>>(
     let log_new_n = log_n - log_cpus;
     let mut tmp = vec![vec![T::group_zero(); 1 << log_new_n]; num_cpus];
     let new_omega = omega.pow(&[num_cpus as u64]);
-
-    worker.scope(0, |scope, _| {
+    tmp.par_iter_mut().enumerate().for_each(|(j, tmp)| {
         let a = &*a;
+        // Shuffle into a sub-FFT
+        let omega_j = omega.pow(&[j as u64]);
+        let omega_step = omega.pow(&[(j as u64) << log_new_n]);
 
-        for (j, tmp) in tmp.iter_mut().enumerate() {
-            scope.spawn(move |_scope| {
-                // Shuffle into a sub-FFT
-                let omega_j = omega.pow(&[j as u64]);
-                let omega_step = omega.pow(&[(j as u64) << log_new_n]);
-
-                let mut elt = E::Fr::one();
-                for (i, tmp) in tmp.iter_mut().enumerate() {
-                    for s in 0..num_cpus {
-                        let idx = (i + (s << log_new_n)) % (1 << log_n);
-                        let mut t = a[idx];
-                        t.group_mul_assign(&elt);
-                        tmp.group_add_assign(&t);
-                        elt.mul_assign(&omega_step);
-                    }
-                    elt.mul_assign(&omega_j);
-                }
-
-                // Perform sub-FFT
-                serial_fft(tmp, &new_omega, log_new_n);
-            });
+        let mut elt = E::Fr::one();
+        for (i, tmp) in tmp.iter_mut().enumerate() {
+            for s in 0..num_cpus {
+                let idx = (i + (s << log_new_n)) % (1 << log_n);
+                let mut t = a[idx];
+                t.group_mul_assign(&elt);
+                tmp.group_add_assign(&t);
+                elt.mul_assign(&omega_step);
+            }
+            elt.mul_assign(&omega_j);
         }
+
+        // Perform sub-FFT
+        serial_fft(tmp, &new_omega, log_new_n);
     });
 
+    let chunk_size = if a.len() < current_num_threads() {
+        1
+    } else {
+        a.len() / current_num_threads()
+    };
+
     // TODO: does this hurt or help?
-    worker.scope(a.len(), |scope, chunk| {
+    a.par_chunks_mut(chunk_size).enumerate().for_each(|(idx, a)| {
         let tmp = &tmp;
 
-        for (idx, a) in a.chunks_mut(chunk).enumerate() {
-            scope.spawn(move |_scope| {
-                let mut idx = idx * chunk;
-                let mask = (1 << log_cpus) - 1;
-                for a in a {
-                    *a = tmp[idx & mask][idx >> log_cpus];
-                    idx += 1;
-                }
-            });
+        let mut idx = idx * chunk_size;
+        let mask = (1 << log_cpus) - 1;
+        for a in a {
+            *a = tmp[idx & mask][idx >> log_cpus];
+            idx += 1;
         }
     });
 }
 
 // Test multiplying various (low degree) polynomials together and
 // comparing with naive evaluations.
-#[cfg(any(feature = "pairing", features = "blst"))]
+#[cfg(feature = "pairing")]
 #[test]
 fn polynomial_arith() {
     use crate::bls::{Bls12, Engine};
     use rand_core::RngCore;
 
     fn test_mul<E: ScalarEngine + Engine, R: RngCore>(rng: &mut R) {
-        let worker = Worker::new();
-
         for coeffs_a in 0..70 {
             for coeffs_b in 0..70 {
                 let mut a: Vec<_> = (0..coeffs_a)
@@ -469,10 +550,10 @@ fn polynomial_arith() {
                 let mut a = EvaluationDomain::from_coeffs(a).unwrap();
                 let mut b = EvaluationDomain::from_coeffs(b).unwrap();
 
-                a.fft(&worker, &mut None).unwrap();
-                b.fft(&worker, &mut None).unwrap();
-                a.mul_assign(&worker, &b);
-                a.ifft(&worker, &mut None).unwrap();
+                a.fft(None);
+                b.fft(None);
+                a.mul_assign(b);
+                a.ifft(None);
 
                 for (naive, fft) in naive.iter().zip(a.coeffs.iter()) {
                     assert!(naive == fft);
@@ -486,15 +567,13 @@ fn polynomial_arith() {
     test_mul::<Bls12, _>(rng);
 }
 
-#[cfg(any(feature = "pairing", feature = "blst"))]
+#[cfg(feature = "pairing")]
 #[test]
 fn fft_composition() {
-    use crate::bls::{Bls12, Engine};
+    use paired::bls12_381::Bls12;
     use rand_core::RngCore;
 
-    fn test_comp<E: ScalarEngine + Engine, R: RngCore>(rng: &mut R) {
-        let worker = Worker::new();
-
+    fn test_comp<E: ScalarEngine, R: RngCore>(rng: &mut R) {
         for coeffs in 0..10 {
             let coeffs = 1 << coeffs;
 
@@ -504,17 +583,17 @@ fn fft_composition() {
             }
 
             let mut domain = EvaluationDomain::from_coeffs(v.clone()).unwrap();
-            domain.ifft(&worker, &mut None).unwrap();
-            domain.fft(&worker, &mut None).unwrap();
+            domain.ifft(None);
+            domain.fft(None);
             assert!(v == domain.coeffs);
-            domain.fft(&worker, &mut None).unwrap();
-            domain.ifft(&worker, &mut None).unwrap();
+            domain.fft(None);
+            domain.ifft(None);
             assert!(v == domain.coeffs);
-            domain.icoset_fft(&worker, &mut None).unwrap();
-            domain.coset_fft(&worker, &mut None).unwrap();
+            domain.icoset_fft(None);
+            domain.coset_fft(None);
             assert!(v == domain.coeffs);
-            domain.coset_fft(&worker, &mut None).unwrap();
-            domain.icoset_fft(&worker, &mut None).unwrap();
+            domain.coset_fft(None);
+            domain.icoset_fft(None);
             assert!(v == domain.coeffs);
         }
     }
@@ -524,16 +603,14 @@ fn fft_composition() {
     test_comp::<Bls12, _>(rng);
 }
 
-#[cfg(any(feature = "pairing", feature = "blst"))]
+#[cfg(feature = "pairing")]
 #[test]
 fn parallel_fft_consistency() {
-    use crate::bls::{Bls12, Engine};
+    use paired::bls12_381::Bls12;
     use rand_core::RngCore;
     use std::cmp::min;
 
-    fn test_consistency<E: ScalarEngine + Engine, R: RngCore>(rng: &mut R) {
-        let worker = Worker::new();
-
+    fn test_consistency<E: ScalarEngine, R: RngCore>(rng: &mut R) {
         for _ in 0..5 {
             for log_d in 0..10 {
                 let d = 1 << log_d;
@@ -545,7 +622,7 @@ fn parallel_fft_consistency() {
                 let mut v2 = EvaluationDomain::from_coeffs(v1.coeffs.clone()).unwrap();
 
                 for log_cpus in log_d..min(log_d + 1, 3) {
-                    parallel_fft(&mut v1.coeffs, &worker, &v1.omega, log_d, log_cpus);
+                    parallel_fft(&mut v1.coeffs, &v1.omega, log_d, log_cpus);
                     serial_fft(&mut v2.coeffs, &v2.omega, log_d);
 
                     assert!(v1.coeffs == v2.coeffs);
@@ -559,42 +636,24 @@ fn parallel_fft_consistency() {
     test_consistency::<Bls12, _>(rng);
 }
 
-pub fn create_fft_kernel<E>(_log_d: usize, priority: bool) -> Option<gpu::FFTKernel<E>>
-where
-    E: Engine,
-{
-    match gpu::FFTKernel::create(priority) {
-        Ok(k) => {
-            info!("GPU FFT kernel instantiated!");
-            Some(k)
-        }
-        Err(e) => {
-            warn!("Cannot instantiate GPU FFT kernel! Error: {}", e);
-            None
-        }
-    }
-}
-
 #[cfg(feature = "gpu")]
 #[cfg(test)]
 mod tests {
-    use crate::bls::{Bls12, Fr};
-    use crate::domain::{gpu_fft, parallel_fft, serial_fft, EvaluationDomain, Scalar};
+    use crate::domain::{gpu_fft, parallel_fft, serial_fft, EvaluationDomain, Scalar, log2_floor};
     use crate::gpu;
-    use crate::multicore::Worker;
     use ff::Field;
-    use std::time::Instant;
 
     #[test]
     pub fn gpu_fft_consistency() {
         let _ = env_logger::try_init();
         gpu::dump_device_list();
 
+        use crate::bls::{Bls12, Fr};
+        use std::time::Instant;
         let rng = &mut rand::thread_rng();
 
-        let worker = Worker::new();
-        let log_cpus = worker.log_num_cpus();
-        let mut kern = gpu::FFTKernel::create(false).expect("Cannot initialize kernel!");
+        env_logger::init();
+        let log_cpus = log2_floor(rayon::current_num_threads());
 
         for log_d in 1..25 {
             let d = 1 << log_d;
@@ -608,7 +667,7 @@ mod tests {
             println!("Testing FFT for {} elements...", d);
 
             let mut now = Instant::now();
-            gpu_fft(&mut kern, &mut v1.coeffs, &v1.omega, log_d).expect("GPU FFT failed!");
+            gpu_fft(&mut v1.coeffs, &v1.omega, log_d).expect("GPU FFT failed!");
             let gpu_dur =
                 now.elapsed().as_secs() * 1000 as u64 + now.elapsed().subsec_millis() as u64;
             println!("GPU took {}ms.", gpu_dur);
@@ -617,7 +676,31 @@ mod tests {
             if log_d <= log_cpus {
                 serial_fft(&mut v2.coeffs, &v2.omega, log_d);
             } else {
-                parallel_fft(&mut v2.coeffs, &worker, &v2.omega, log_d, log_cpus);
+                parallel_fft(&mut v2.coeffs, &v2.omega, log_d, log_cpus);
+            }
+            let cpu_dur =
+                now.elapsed().as_secs() * 1000 as u64 + now.elapsed().subsec_millis() as u64;
+            println!("CPU ({} cores) took {}ms.", 1 << log_cpus, cpu_dur);
+
+            let elems = (0..d)
+                .map(|_| Scalar::<Bls12>(Fr::random(rng)))
+                .collect::<Vec<_>>();
+            let mut v1 = EvaluationDomain::from_coeffs(elems.clone()).unwrap();
+            let mut v2 = EvaluationDomain::from_coeffs(elems.clone()).unwrap();
+
+            println!("Testing FFT for {} elements...", d);
+
+            let mut now = Instant::now();
+            gpu_fft(&mut v1.coeffs, &v1.omega, log_d).expect("GPU FFT failed!");
+            let gpu_dur =
+                now.elapsed().as_secs() * 1000 as u64 + now.elapsed().subsec_millis() as u64;
+            println!("GPU took {}ms.", gpu_dur);
+
+            now = Instant::now();
+            if log_d <= log_cpus {
+                serial_fft(&mut v2.coeffs, &v2.omega, log_d);
+            } else {
+                parallel_fft(&mut v2.coeffs, &v2.omega, log_d, log_cpus);
             }
             let cpu_dur =
                 now.elapsed().as_secs() * 1000 as u64 + now.elapsed().subsec_millis() as u64;

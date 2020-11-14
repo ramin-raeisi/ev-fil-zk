@@ -1,38 +1,39 @@
 use super::error::{GPUError, GPUResult};
-use super::locks;
 use super::sources;
 use super::utils;
-use crate::bls::Engine;
-use crate::multicore::Worker;
-use crate::multiexp::{multiexp as cpu_multiexp, FullDensity};
-use ff::{PrimeField, ScalarEngine};
+use crate::bls::{Engine, Bls12};
+use ff::{Field, PrimeField, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
 use log::{error, info};
 use rust_gpu_tools::*;
 use std::any::TypeId;
 use std::sync::Arc;
+use futures::future::Future;
+use rayon::slice::ParallelSlice;
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use crate::gpu::scheduler;
 
 const MAX_WINDOW_SIZE: usize = 10;
 const LOCAL_WORK_SIZE: usize = 256;
 const MEMORY_PADDING: f64 = 0.2f64; // Let 20% of GPU memory be free
+const CPU_UTILIZATION: f64 = 0.875;
 
 pub fn get_cpu_utilization() -> f64 {
-    use std::env;
-    env::var("BELLMAN_CPU_UTILIZATION")
+    std::env::var("FILZK_CPU_UTILIZATION")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid BELLMAN_CPU_UTILIZATION! Defaulting to 0...");
-                Ok(0f64)
+                error!("Invalid FILZK_CPU_UTILIZATION! Defaulting to {}", CPU_UTILIZATION);
+                Ok(CPU_UTILIZATION)
             }
         })
-        .unwrap_or(0f64)
+        .unwrap_or(CPU_UTILIZATION)
         .max(0f64)
         .min(1f64)
 }
 
 // Multiexp kernel for a single GPU
-pub struct SingleMultiexpKernel<E>
+pub struct MultiexpKernel<E>
 where
     E: Engine,
 {
@@ -45,9 +46,9 @@ where
     _phantom: std::marker::PhantomData<E::Fr>,
 }
 
-fn calc_num_groups(core_count: usize, num_windows: usize) -> usize {
-    // Observations show that we get the best performance when num_groups * num_windows ~= 2 * CUDA_CORES
-    2 * core_count / num_windows
+fn calc_num_groups(work_size: usize, num_windows: usize) -> usize {
+    // Observations show that we get the best performance when work_size ~= 2 * CUDA_CORES
+    work_size / num_windows
 }
 
 fn calc_window_size(n: usize, exp_bits: usize, core_count: usize) -> usize {
@@ -69,26 +70,35 @@ fn calc_window_size(n: usize, exp_bits: usize, core_count: usize) -> usize {
     MAX_WINDOW_SIZE
 }
 
-fn calc_best_chunk_size(max_window_size: usize, core_count: usize, exp_bits: usize) -> usize {
+fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usize) -> usize {
     // Best chunk-size (N) can also be calculated using the same logic as calc_window_size:
-    // n = e^window_size * window_size * 2 * core_count / exp_bits
-    (((max_window_size as f64).exp() as f64)
-        * (max_window_size as f64)
-        * 2f64
-        * (core_count as f64)
+    // n = e^window_size * window_size * work_size / exp_bits
+    (((max_window_size as f64).exp() as f64) * (max_window_size as f64) * (work_size as f64)
         / (exp_bits as f64))
         .ceil() as usize
 }
 
-fn calc_chunk_size<E>(mem: u64, core_count: usize) -> usize
-where
-    E: Engine,
+fn calc_chunk_size<E>(mem: u64, work_size: usize) -> usize
+    where
+        E: Engine,
 {
+    let memory_padding = std::env::var("FILZK_GPU_MEMORY_PADDING")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FILZK_GPU_MEMORY_PADDING! Defaulting to {}", MEMORY_PADDING);
+                Ok(MEMORY_PADDING)
+            }
+        })
+        .unwrap_or(MEMORY_PADDING)
+        .max(1f64)
+        .min(0f64);
+
     let aff_size = std::mem::size_of::<E::G1Affine>() + std::mem::size_of::<E::G2Affine>();
     let exp_size = exp_size::<E>();
     let proj_size = std::mem::size_of::<E::G1>() + std::mem::size_of::<E::G2>();
-    ((((mem as f64) * (1f64 - MEMORY_PADDING)) as usize)
-        - (2 * core_count * ((1 << MAX_WINDOW_SIZE) + 1) * proj_size))
+    ((((mem as f64) * (1f64 - memory_padding)) as usize)
+        - (work_size * ((1 << MAX_WINDOW_SIZE) + 1) * proj_size))
         / (aff_size + exp_size)
 }
 
@@ -96,11 +106,11 @@ fn exp_size<E: Engine>() -> usize {
     std::mem::size_of::<<E::Fr as ff::PrimeField>::Repr>()
 }
 
-impl<E> SingleMultiexpKernel<E>
+impl<E> MultiexpKernel<E>
 where
     E: Engine,
 {
-    pub fn create(d: opencl::Device, priority: bool) -> GPUResult<SingleMultiexpKernel<E>> {
+    /*pub fn create(d: opencl::Device, priority: bool) -> GPUResult<SingleMultiexpKernel<E>> {
         let src = sources::kernel::<E>(d.brand() == opencl::Brand::Nvidia);
 
         let exp_bits = exp_size::<E>() * 8;
@@ -117,51 +127,69 @@ where
             priority,
             _phantom: std::marker::PhantomData,
         })
+    }*/
+
+    fn ensure_curve() -> GPUResult<()> {
+        if TypeId::of::<E>() == TypeId::of::<Bls12>() {
+            Ok(())
+        } else {
+            Err(GPUError::CurveNotSupported)
+        }
     }
 
-    pub fn multiexp<G>(
-        &mut self,
+    fn chunk_size_of(program: &opencl::Program, work_size: usize) -> usize {
+        let exp_bits = std::mem::size_of::<E::Fr>() * 8;
+        let max_n = calc_chunk_size::<E>(program.device().memory(), work_size);
+        let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
+        std::cmp::min(max_n, best_n)
+    }
+
+    fn multiexp_on<G>(
+        program: &opencl::Program,
         bases: &[G],
         exps: &[<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr],
         n: usize,
+        work_size: usize,
     ) -> GPUResult<<G as CurveAffine>::Projective>
-    where
-        G: CurveAffine,
+        where
+            G: CurveAffine,
     {
-        if locks::PriorityLock::should_break(self.priority) {
-            return Err(GPUError::GPUTaken);
-        }
+        MultiexpKernel::<E>::ensure_curve()?;
+
+        info!(
+            "Running Multiexp of {} elements on {}(bus_id: {})...",
+            n,
+            program.device().name(),
+            program.device().bus_id()
+        );
 
         let exp_bits = exp_size::<E>() * 8;
-        let window_size = calc_window_size(n as usize, exp_bits, self.core_count);
+
+        let window_size = calc_window_size(n as usize, exp_bits, work_size);
         let num_windows = ((exp_bits as f64) / (window_size as f64)).ceil() as usize;
-        let num_groups = calc_num_groups(self.core_count, num_windows);
+        let num_groups = calc_num_groups(work_size, num_windows);
         let bucket_len = 1 << window_size;
 
         // Each group will have `num_windows` threads and as there are `num_groups` groups, there will
         // be `num_groups` * `num_windows` threads in total.
         // Each thread will use `num_groups` * `num_windows` * `bucket_len` buckets.
 
-        let mut base_buffer = self.program.create_buffer::<G>(n)?;
+        let mut base_buffer = program.create_buffer::<G>(n)?;
         base_buffer.write_from(0, bases)?;
-        let mut exp_buffer = self
-            .program
-            .create_buffer::<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>(n)?;
+        let mut exp_buffer =
+            program.create_buffer::<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>(n)?;
         exp_buffer.write_from(0, exps)?;
 
-        let bucket_buffer = self
-            .program
-            .create_buffer::<<G as CurveAffine>::Projective>(2 * self.core_count * bucket_len)?;
-        let result_buffer = self
-            .program
-            .create_buffer::<<G as CurveAffine>::Projective>(2 * self.core_count)?;
+        let bucket_buffer =
+            program.create_buffer::<<G as CurveAffine>::Projective>(work_size * bucket_len)?;
+        let result_buffer = program.create_buffer::<<G as CurveAffine>::Projective>(work_size)?;
 
         // Make global work size divisible by `LOCAL_WORK_SIZE`
         let mut global_work_size = num_windows * num_groups;
         global_work_size +=
             (LOCAL_WORK_SIZE - (global_work_size % LOCAL_WORK_SIZE)) % LOCAL_WORK_SIZE;
 
-        let kernel = self.program.create_kernel(
+        let kernel = program.create_kernel(
             if TypeId::of::<G>() == TypeId::of::<E::G1Affine>() {
                 "G1_bellman_multiexp"
             } else if TypeId::of::<G>() == TypeId::of::<E::G2Affine>() {
@@ -205,126 +233,93 @@ where
 
         Ok(acc)
     }
-}
 
-// A struct that containts several multiexp kernels for different devices
-pub struct MultiexpKernel<E>
-where
-    E: Engine,
-{
-    kernels: Vec<SingleMultiexpKernel<E>>,
-    _lock: locks::GPULock, // RFC 1857: struct fields are dropped in the same order as they are declared.
-}
-
-impl<E> MultiexpKernel<E>
-where
-    E: Engine,
-{
-    pub fn create(priority: bool) -> GPUResult<MultiexpKernel<E>> {
-        let lock = locks::GPULock::lock();
-
-        let devices = opencl::Device::all()?;
-
-        let kernels: Vec<_> = devices
-            .into_iter()
-            .map(|d| (d.clone(), SingleMultiexpKernel::<E>::create(d, priority)))
-            .filter_map(|(device, res)| {
-                if let Err(ref e) = res {
-                    error!(
-                        "Cannot initialize kernel for device '{}'! Error: {}",
-                        device.name(),
-                        e
-                    );
-                }
-                res.ok()
-            })
-            .collect();
-
-        if kernels.is_empty() {
-            return Err(GPUError::Simple("No working GPUs found!"));
+    pub fn calibrate<G>(program: &opencl::Program, n: usize) -> GPUResult<usize>
+        where
+            G: CurveAffine,
+            <G as groupy::CurveAffine>::Engine: Engine,
+    {
+        fn n_of<F, T: Clone>(n: usize, mut f: F) -> Vec<T>
+            where
+                F: FnMut() -> T,
+        {
+            let init = (0..1024).map(|_| f()).collect::<Vec<_>>();
+            init.into_iter().cycle().take(n).collect::<Vec<_>>()
         }
-        info!(
-            "Multiexp: {} working device(s) selected. (CPU utilization: {})",
-            kernels.len(),
-            get_cpu_utilization()
-        );
-        for (i, k) in kernels.iter().enumerate() {
-            info!(
-                "Multiexp: Device {}: {} (Chunk-size: {})",
-                i,
-                k.program.device().name(),
-                k.n
-            );
+        use std::time::Instant;
+        let rng = &mut rand::thread_rng();
+        let bases = n_of(n, || {
+            <G as CurveAffine>::Projective::random(rng).into_affine()
+        });
+        let exps = n_of(n, || <G as CurveAffine>::Scalar::random(rng).into_repr());
+        let mut best_work_size = 128;
+        let mut best_dur = None;
+        loop {
+            let now = Instant::now();
+            Self::multiexp_on(program, &bases[..], &exps[..], n, best_work_size + 128)?;
+            let dur = now.elapsed().as_secs() * 1000 as u64 + now.elapsed().subsec_millis() as u64;
+            if best_dur.is_some() && dur > ((best_dur.unwrap() as f64) * 1.1f64) as u64 {
+                break;
+            } else {
+                best_dur = Some(dur);
+            }
+            best_work_size += 128;
         }
-        Ok(MultiexpKernel::<E> {
-            kernels,
-            _lock: lock,
-        })
+        println!("Best: {}", best_work_size);
+        Ok(best_work_size)
     }
 
     pub fn multiexp<G>(
-        &mut self,
-        pool: &Worker,
         bases: Arc<Vec<G>>,
         exps: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
         skip: usize,
         n: usize,
     ) -> GPUResult<<G as CurveAffine>::Projective>
-    where
-        G: CurveAffine,
-        <G as groupy::CurveAffine>::Engine: crate::bls::Engine,
+        where
+            G: CurveAffine,
+            <G as groupy::CurveAffine>::Engine: Engine,
     {
-        let num_devices = self.kernels.len();
+        MultiexpKernel::<E>::ensure_curve()?;
+
         // Bases are skipped by `self.1` elements, when converted from (Arc<Vec<G>>, usize) to Source
         // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
         let bases = &bases[skip..(skip + n)];
         let exps = &exps[..n];
+        let mut chunk_size: usize = std::usize::MAX;
 
-        let cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
-        let n = n - cpu_n;
-        let (cpu_bases, bases) = bases.split_at(cpu_n);
-        let (cpu_exps, exps) = exps.split_at(cpu_n);
-
-        let chunk_size = ((n as f64) / (num_devices as f64)).ceil() as usize;
-
-        crate::multicore::THREAD_POOL.install(|| {
-            use rayon::prelude::*;
-
-            let mut acc = <G as CurveAffine>::Projective::zero();
-
-            let results = if n > 0 {
-                bases
-                    .par_chunks(chunk_size)
-                    .zip(exps.par_chunks(chunk_size))
-                    .zip(self.kernels.par_iter_mut())
-                    .map(|((bases, exps), kern)| -> Result<<G as CurveAffine>::Projective, GPUError> {
-                        let mut acc = <G as CurveAffine>::Projective::zero();
-                        for (bases, exps) in bases.chunks(kern.n).zip(exps.chunks(kern.n)) {
-                            let result = kern.multiexp(bases, exps, bases.len())?;
-                            acc.add_assign(&result);
-                        }
-
-                        Ok(acc)
-                    })
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
-
-            let cpu_acc = cpu_multiexp(
-                &pool,
-                (Arc::new(cpu_bases.to_vec()), 0),
-                FullDensity,
-                Arc::new(cpu_exps.to_vec()),
-                &mut None,
-            );
-
-            for r in results {
-                acc.add_assign(&r?);
+        for p in scheduler::DEVICE_POOL.devices.iter() {
+            let data = p.lock().unwrap();
+            let cur: usize = MultiexpKernel::<E>::chunk_size_of(&data,
+                                                                utils::best_work_size(&data
+                                                                    .device()));
+            if cur < chunk_size {
+                chunk_size = cur;
             }
+        }
 
-            acc.add_assign(&cpu_acc.wait().unwrap());
-            Ok(acc)
-        })
+        let result = bases.par_chunks(chunk_size)
+            .zip(exps.par_chunks(chunk_size))
+            .map(|(bases, exps)| {
+                let bases = bases.to_vec();
+                let exps = exps.to_vec();
+                scheduler::schedule(move |prog| -> GPUResult<<G as CurveAffine>::Projective> {
+                    MultiexpKernel::<E>::multiexp_on(
+                        prog,
+                        &bases,
+                        &exps,
+                        bases.len(),
+                        utils::best_work_size(&prog.device()),
+                    )
+                })
+            })
+            .map(|future| future.wait().unwrap())
+            .collect::<GPUResult<Vec<<G as CurveAffine>::Projective>>>()?
+            .iter()
+            .fold(<G as CurveAffine>::Projective::zero(), |mut a, b| {
+                a.add_assign(b);
+                a
+            });
+
+        Ok(result)
     }
 }
