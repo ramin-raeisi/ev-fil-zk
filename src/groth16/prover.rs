@@ -517,10 +517,17 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
             g_c.add_assign(&h.wait()?);
             g_c.add_assign(&l.wait()?);
 
+            info!("Calculate g_a");
+            let p_a = g_a.into_affine();
+            info!("Calculate g_b");
+            let p_b = g_b.into_affine();
+            info!("Calculate g_c");
+            let p_c = g_c.into_affine();
+
             Ok(Proof {
-                a: g_a.into_affine(),
-                b: g_b.into_affine(),
-                c: g_c.into_affine(),
+                a: p_a,
+                b: p_b,
+                c: p_c,
             })
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
 
