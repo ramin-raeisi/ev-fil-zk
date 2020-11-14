@@ -238,7 +238,7 @@ mod test_with_bls12_381 {
             let mut v = vec![];
 
             params.write(&mut v).unwrap();
-            assert_eq!(v.len(), 2136);
+            assert_eq!(v.len(), 2036);
 
             let de_params = Parameters::read(&v[..], true).unwrap();
             assert!(params == de_params);

@@ -127,7 +127,6 @@ fn dummy_params<E: Engine, R: Rng>(public: usize, private: usize, rng: &mut R) -
         h: Arc::new(random_points::<E::G1, _>(hlen, rng)),
         l: Arc::new(random_points::<E::G1, _>(private, rng)),
         a: Arc::new(random_points::<E::G1, _>(count, rng)),
-        b_g1: Arc::new(random_points::<E::G1, _>(count, rng)),
         b_g2: Arc::new(random_points::<E::G2, _>(count, rng)),
     }
 }

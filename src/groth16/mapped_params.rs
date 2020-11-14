@@ -42,7 +42,6 @@ pub struct MappedParameters<E: Engine> {
     /// QAP "B" polynomials evaluated at tau in the Lagrange basis. Needed in
     /// G1 and G2 for C/B queries, respectively. Never contains points at
     /// infinity for the same reason as the "A" polynomials.
-    pub b_g1: Vec<Range<usize>>,
     pub b_g2: Vec<Range<usize>>,
 
     pub checked: bool,
@@ -88,23 +87,6 @@ impl<'a, E: Engine> ParameterSource<E> for &'a MappedParameters<E> {
             .iter()
             .cloned()
             .map(|a| read_g1::<E>(&self.params, a, self.checked))
-            .collect::<Result<_, _>>()?;
-
-        let builder: Arc<Vec<_>> = Arc::new(builder);
-
-        Ok(((builder.clone(), 0), (builder, num_inputs)))
-    }
-
-    fn get_b_g1(
-        &self,
-        num_inputs: usize,
-        _num_b_g1: usize,
-    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {
-        let builder = self
-            .b_g1
-            .iter()
-            .cloned()
-            .map(|b_g1| read_g1::<E>(&self.params, b_g1, self.checked))
             .collect::<Result<_, _>>()?;
 
         let builder: Arc<Vec<_>> = Arc::new(builder);
