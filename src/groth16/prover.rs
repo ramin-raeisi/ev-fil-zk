@@ -372,7 +372,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
             let input_assignment = std::mem::replace(&mut prover.input_assignment, Vec::new());
             Arc::new(
                 input_assignment
-                    .into_iter()
+                    .par_iter()
                     .map(|s| s.into_repr())
                     .collect::<Vec<_>>(),
             )
@@ -385,7 +385,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
             let aux_assignment = std::mem::replace(&mut prover.aux_assignment, Vec::new());
             Arc::new(
                 aux_assignment
-                    .into_iter()
+                    .par_iter()
                     .map(|s| s.into_repr())
                     .collect::<Vec<_>>(),
             )

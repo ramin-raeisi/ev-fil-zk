@@ -15,15 +15,16 @@ use crate::gpu::scheduler;
 
 const MAX_WINDOW_SIZE: usize = 10;
 const LOCAL_WORK_SIZE: usize = 256;
-const MEMORY_PADDING: f64 = 0.2f64; // Let 20% of GPU memory be free
+const MEMORY_PADDING: f64 = 0.2f64;
+// Let 20% of GPU memory be free
 const CPU_UTILIZATION: f64 = 0.875;
 
 pub fn get_cpu_utilization() -> f64 {
-    std::env::var("FILZK_CPU_UTILIZATION")
+    std::env::var("FIL_ZK_CPU_UTILIZATION")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FILZK_CPU_UTILIZATION! Defaulting to {}", CPU_UTILIZATION);
+                error!("Invalid FIL_ZK_CPU_UTILIZATION! Defaulting to {}", CPU_UTILIZATION);
                 Ok(CPU_UTILIZATION)
             }
         })
@@ -34,15 +35,9 @@ pub fn get_cpu_utilization() -> f64 {
 
 // Multiexp kernel for a single GPU
 pub struct MultiexpKernel<E>
-where
-    E: Engine,
+    where
+        E: Engine,
 {
-    program: opencl::Program,
-
-    core_count: usize,
-    n: usize,
-
-    priority: bool,
     _phantom: std::marker::PhantomData<E::Fr>,
 }
 
@@ -51,16 +46,16 @@ fn calc_num_groups(work_size: usize, num_windows: usize) -> usize {
     work_size / num_windows
 }
 
-fn calc_window_size(n: usize, exp_bits: usize, core_count: usize) -> usize {
+fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
     // window_size = ln(n / num_groups)
     // num_windows = exp_bits / window_size
-    // num_groups = 2 * core_count / num_windows = 2 * core_count * window_size / exp_bits
-    // window_size = ln(n / num_groups) = ln(n * exp_bits / (2 * core_count * window_size))
-    // window_size = ln(exp_bits * n / (2 * core_count)) - ln(window_size)
+    // num_groups = work_size / num_windows = work_size * window_size / exp_bits
+    // window_size = ln(n / num_groups) = ln(n * exp_bits / (work_size * window_size))
+    // window_size = ln(exp_bits * n / (work_size)) - ln(window_size)
     //
     // Thus we need to solve the following equation:
-    // window_size + ln(window_size) = ln(exp_bits * n / (2 * core_count))
-    let lower_bound = (((exp_bits * n) as f64) / ((2 * core_count) as f64)).ln();
+    // window_size + ln(window_size) = ln(exp_bits * n / (work_size))
+    let lower_bound = (((exp_bits * n) as f64) / ((work_size) as f64)).ln();
     for w in 0..MAX_WINDOW_SIZE {
         if (w as f64) + (w as f64).ln() > lower_bound {
             return w;
@@ -82,11 +77,11 @@ fn calc_chunk_size<E>(mem: u64, work_size: usize) -> usize
     where
         E: Engine,
 {
-    let memory_padding = std::env::var("FILZK_GPU_MEMORY_PADDING")
+    let memory_padding = std::env::var("FIL_ZK_GPU_MEMORY_PADDING")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FILZK_GPU_MEMORY_PADDING! Defaulting to {}", MEMORY_PADDING);
+                error!("Invalid FIL_ZK_GPU_MEMORY_PADDING! Defaulting to {}", MEMORY_PADDING);
                 Ok(MEMORY_PADDING)
             }
         })
@@ -95,7 +90,7 @@ fn calc_chunk_size<E>(mem: u64, work_size: usize) -> usize
         .min(0f64);
 
     let aff_size = std::mem::size_of::<E::G1Affine>() + std::mem::size_of::<E::G2Affine>();
-    let exp_size = exp_size::<E>();
+    let exp_size = exp_size::<E::Fr>();
     let proj_size = std::mem::size_of::<E::G1>() + std::mem::size_of::<E::G2>();
     ((((mem as f64) * (1f64 - memory_padding)) as usize)
         - (work_size * ((1 << MAX_WINDOW_SIZE) + 1) * proj_size))
@@ -107,8 +102,8 @@ fn exp_size<E: Engine>() -> usize {
 }
 
 impl<E> MultiexpKernel<E>
-where
-    E: Engine,
+    where
+        E: Engine,
 {
     fn ensure_curve() -> GPUResult<()> {
         if TypeId::of::<E>() == TypeId::of::<Bls12>() {
@@ -119,7 +114,7 @@ where
     }
 
     fn chunk_size_of(program: &opencl::Program, work_size: usize) -> usize {
-        let exp_bits = std::mem::size_of::<E::Fr>() * 8;
+        let exp_bits = exp_size::<E::Fr>() * 8;
         let max_n = calc_chunk_size::<E>(program.device().memory(), work_size);
         let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
         std::cmp::min(max_n, best_n)
@@ -218,7 +213,7 @@ where
     pub fn calibrate<G>(program: &opencl::Program, n: usize) -> GPUResult<usize>
         where
             G: CurveAffine,
-            <G as groupy::CurveAffine>::Engine: Engine,
+            <G as groupy::CurveAffine>::Engine: paired::Engine,
     {
         fn n_of<F, T: Clone>(n: usize, mut f: F) -> Vec<T>
             where

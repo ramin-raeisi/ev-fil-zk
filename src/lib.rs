@@ -150,7 +150,7 @@ pub mod multiexp;
 pub mod util_cs;
 use ff::{Field, ScalarEngine};
 
-use ahash::AHashMap as HashMap;
+use rustc_hash::FxHashMap as HashMap;
 use std::io;
 use std::marker::PhantomData;
 use std::ops::{Add, Sub};

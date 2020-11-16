@@ -328,11 +328,11 @@ fn best_fft<E: Engine, T: Group<E>>(
     omega: &E::Fr,
     log_n: u32,
 ) -> gpu::GPUResult<()> {
-    let enable_gpu_fft: bool = std::env::var("FILZK_DISABLE_FFT_GPU")
+    let enable_gpu_fft: bool = std::env::var("FIL_ZK_DISABLE_FFT_GPU")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FILZK_DISABLE_FFT_GPU! Defaulting to 0...");
+                error!("Invalid FIL_ZK_DISABLE_FFT_GPU! Defaulting to 0...");
                 Ok(true)
             }
         })
@@ -341,7 +341,7 @@ fn best_fft<E: Engine, T: Group<E>>(
     if 1u32 << log_n < 2 << 18 {
         warn!("FFT elements amount is small (<= 2^18). GPU data transfer may probably take \
             longer than perfoming FFT on CPU. Consider disabling GPU FFT with environment \
-            variable FILZK_DISABLE_FFT_GPU=1");
+            variable FIL_ZK_DISABLE_FFT_GPU=1");
     }
 
     if enable_gpu_fft {
