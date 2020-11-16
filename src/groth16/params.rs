@@ -36,6 +36,7 @@ pub struct Parameters<E: Engine> {
     // QAP "B" polynomials evaluated at tau in the Lagrange basis. Needed in
     // G1 and G2 for C/B queries, respectively. Never contains points at
     // infinity for the same reason as the "A" polynomials.
+    pub b_g1: Arc<Vec<E::G1Affine>>,
     pub b_g2: Arc<Vec<E::G2Affine>>,
 }
 
@@ -45,6 +46,7 @@ impl<E: Engine> PartialEq for Parameters<E> {
             && self.h == other.h
             && self.l == other.l
             && self.a == other.a
+            && self.b_g1 == other.b_g1
             && self.b_g2 == other.b_g2
     }
 }
@@ -66,6 +68,11 @@ impl<E: Engine> Parameters<E> {
         writer.write_u32::<BigEndian>(self.a.len() as u32)?;
         for g in &self.a[..] {
             writer.write_all(g.into_uncompressed().as_ref())?;
+        }
+
+        writer.write_u32::<BigEndian>(self.b_g1.len() as u32)?;	
+        for g in &self.b_g1[..] {	
+            writer.write_all(g.into_uncompressed().as_ref())?;	
         }
 
         writer.write_u32::<BigEndian>(self.b_g2.len() as u32)?;
@@ -123,11 +130,13 @@ impl<E: Engine> Parameters<E> {
         let mut h = vec![];
         let mut l = vec![];
         let mut a = vec![];
+        let mut b_g1 = vec![];
         let mut b_g2 = vec![];
 
         get_offsets(&params, &mut offset, &mut h, g1_len)?;
         get_offsets(&params, &mut offset, &mut l, g1_len)?;
         get_offsets(&params, &mut offset, &mut a, g1_len)?;
+        get_offsets(&params, &mut offset, &mut b_g1, g1_len)?;
         get_offsets(&params, &mut offset, &mut b_g2, g2_len)?;
 
         let pvk = super::prepare_verifying_key(&vk);
@@ -141,6 +150,7 @@ impl<E: Engine> Parameters<E> {
             h,
             l,
             a,
+            b_g1,
             b_g2,
             checked,
         })
@@ -251,11 +261,13 @@ impl<E: Engine> Parameters<E> {
         let mut h = vec![];
         let mut l = vec![];
         let mut a = vec![];
+        let mut b_g1 = vec![];
         let mut b_g2 = vec![];
 
         get_g1s(&mmap, &mut offset, &mut h)?;
         get_g1s(&mmap, &mut offset, &mut l)?;
         get_g1s(&mmap, &mut offset, &mut a)?;
+        get_g1s(&mmap, &mut offset, &mut b_g1)?;
         get_g2s(&mmap, &mut offset, &mut b_g2)?;
 
         Ok(Parameters {
@@ -263,6 +275,7 @@ impl<E: Engine> Parameters<E> {
             h: Arc::new(h),
             l: Arc::new(l),
             a: Arc::new(a),
+            b_g1: Arc::new(b_g1),
             b_g2: Arc::new(b_g2),
         })
     }
@@ -317,6 +330,7 @@ impl<E: Engine> Parameters<E> {
         let mut h = vec![];
         let mut l = vec![];
         let mut a = vec![];
+        let mut b_g1 = vec![];
         let mut b_g2 = vec![];
 
         {
@@ -340,6 +354,13 @@ impl<E: Engine> Parameters<E> {
             }
         }
 
+        {	
+            let len = reader.read_u32::<BigEndian>()? as usize;	
+            for _ in 0..len {	
+                b_g1.push(read_g1(&mut reader)?);	
+            }	
+        }
+
         {
             let len = reader.read_u32::<BigEndian>()? as usize;
             for _ in 0..len {
@@ -352,6 +373,7 @@ impl<E: Engine> Parameters<E> {
             h: Arc::new(h),
             l: Arc::new(l),
             a: Arc::new(a),
+            b_g1: Arc::new(b_g1),
             b_g2: Arc::new(b_g2),
         })
     }
@@ -368,6 +390,11 @@ pub trait ParameterSource<E: Engine>: Send + Sync {
         &self,
         num_inputs: usize,
         num_aux: usize,
+    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError>;
+    fn get_b_g1(	
+        &self,	
+        num_inputs: usize,	
+        num_aux: usize,	
     ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError>;
     fn get_b_g2(
         &self,
@@ -398,6 +425,14 @@ impl<'a, E: Engine> ParameterSource<E> for &'a Parameters<E> {
         _: usize,
     ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {
         Ok(((self.a.clone(), 0), (self.a.clone(), num_inputs)))
+    }
+
+    fn get_b_g1(	
+        &self,	
+        num_inputs: usize,	
+        _: usize,	
+    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {	
+        Ok(((self.b_g1.clone(), 0), (self.b_g1.clone(), num_inputs)))	
     }
 
     fn get_b_g2(

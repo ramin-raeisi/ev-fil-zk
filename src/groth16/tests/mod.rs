@@ -187,6 +187,7 @@ fn test_xordemo() {
     assert_eq!(4, params.a.len());
 
     // The density of the B query is 2 (two variables are in at least one B term)
+    assert_eq!(2, params.b_g1.len());
     assert_eq!(2, params.b_g2.len());
 
     /*
@@ -232,6 +233,14 @@ fn test_xordemo() {
 
     for (u, a) in u_i.iter().zip(&params.a[..]) {
         assert_eq!(u, a);
+    }
+
+    for (v, b) in v_i	
+        .iter()	
+        .filter(|&&e| e != Fr::zero())	
+        .zip(&params.b_g1[..])	
+    {	
+        assert_eq!(v, b);	
     }
 
     for (v, b) in v_i
