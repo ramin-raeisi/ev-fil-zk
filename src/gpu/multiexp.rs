@@ -213,7 +213,7 @@ impl<E> MultiexpKernel<E>
     pub fn calibrate<G>(program: &opencl::Program, n: usize) -> GPUResult<usize>
         where
             G: CurveAffine,
-            <G as groupy::CurveAffine>::Engine: paired::Engine,
+            <G as groupy::CurveAffine>::Engine: crate::bls::Engine,
     {
         fn n_of<F, T: Clone>(n: usize, mut f: F) -> Vec<T>
             where
