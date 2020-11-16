@@ -26,7 +26,7 @@ fn eval<E: Engine>(
 ) -> E::Fr {
     let mut acc = E::Fr::zero();
 
-    for (&index, &coeff) in lc.0.iter() {
+    lc.0.par_iter().map(|(&index, &coeff)| {
         let mut tmp;
 
         match index {
@@ -44,13 +44,14 @@ fn eval<E: Engine>(
             }
         }
 
-        if coeff == E::Fr::one() {
-            acc.add_assign(&tmp);
-        } else {
+        if coeff != E::Fr::one() {
             tmp.mul_assign(&coeff);
-            acc.add_assign(&tmp);
         }
-    }
+
+        tmp
+    }).collect::<Vec<_>>().iter().for_each(|v| {
+        acc.add_assign(&v);
+    });
 
     acc
 }
@@ -293,7 +294,38 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
             circuit.synthesize(&mut prover)?;
 
             for i in 0..prover.input_assignment.len() {
-                prover.enforce(|| "", |lc| lc + Variable(Index::Input(i)), |lc| lc, |lc| lc);
+                let a = LinearCombination::zero() + Variable(Index::Input(i));
+                let b = LinearCombination::zero();
+                let c = LinearCombination::zero();
+
+                prover.a.push(Scalar(eval(
+                    &a,
+                    // Inputs have full density in the A query
+                    // because there are constraints of the
+                    // form x * 0 = 0 for each input.
+                    None,
+                    Some(&mut prover.a_aux_density),
+                    &prover.input_assignment,
+                    &prover.aux_assignment,
+                )));
+                prover.b.push(Scalar(eval(
+                    &b,
+                    Some(&mut prover.b_input_density),
+                    Some(&mut prover.b_aux_density),
+                    &prover.input_assignment,
+                    &prover.aux_assignment,
+                )));
+                prover.c.push(Scalar(eval(
+                    &c,
+                    // There is no C polynomial query,
+                    // though there is an (beta)A + (alpha)B + C
+                    // query for all aux variables.
+                    // However, that query has full density.
+                    None,
+                    None,
+                    &prover.input_assignment,
+                    &prover.aux_assignment,
+                )));
             }
 
             Ok(prover)
@@ -316,11 +348,6 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
             "only equally sized circuits are supported"
         );
     });
-
-    let mut log_d = 0;
-    while (1 << log_d) < n {
-        log_d += 1;
-    }
 
     let a_s = provers
         .par_iter_mut()
