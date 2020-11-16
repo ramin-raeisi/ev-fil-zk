@@ -22,6 +22,8 @@ pub use self::utils::*;
 
 #[cfg(feature = "gpu")]
 mod fft;
+
+#[cfg(feature = "gpu")]
 mod structs;
 
 #[cfg(feature = "gpu")]

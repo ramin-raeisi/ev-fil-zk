@@ -7,20 +7,22 @@ use rust_gpu_tools::*;
 use std::cmp;
 use std::any::TypeId;
 
-const LOG2_MAX_ELEMENTS: usize = 32; // At most 2^32 elements is supported.
-const MAX_LOG2_RADIX: u32 = 8; // Radix256
+const LOG2_MAX_ELEMENTS: usize = 32;
+// At most 2^32 elements is supported.
+const MAX_LOG2_RADIX: u32 = 8;
+// Radix256
 const MAX_LOG2_LOCAL_WORK_SIZE: u32 = 7; // 128
 
 pub struct FFTKernel<E>
-where
-    E: Engine,
+    where
+        E: Engine,
 {
     _phantom: std::marker::PhantomData<E::Fr>,
 }
 
 impl<E> FFTKernel<E>
-where
-    E: Engine,
+    where
+        E: Engine,
 {
     fn ensure_curve() -> GPUResult<()> {
         if TypeId::of::<E>() == TypeId::of::<Bls12>() {

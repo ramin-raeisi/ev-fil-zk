@@ -110,25 +110,6 @@ impl<E> MultiexpKernel<E>
 where
     E: Engine,
 {
-    /*pub fn create(d: opencl::Device, priority: bool) -> GPUResult<SingleMultiexpKernel<E>> {
-        let src = sources::kernel::<E>(d.brand() == opencl::Brand::Nvidia);
-
-        let exp_bits = exp_size::<E>() * 8;
-        let core_count = utils::get_core_count(&d);
-        let mem = d.memory();
-        let max_n = calc_chunk_size::<E>(mem, core_count);
-        let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, core_count, exp_bits);
-        let n = std::cmp::min(max_n, best_n);
-
-        Ok(SingleMultiexpKernel {
-            program: opencl::Program::from_opencl(d, &src)?,
-            core_count,
-            n,
-            priority,
-            _phantom: std::marker::PhantomData,
-        })
-    }*/
-
     fn ensure_curve() -> GPUResult<()> {
         if TypeId::of::<E>() == TypeId::of::<Bls12>() {
             Ok(())

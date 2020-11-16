@@ -7,12 +7,12 @@ use std::sync::Arc;
 // This module is compiled instead of `fft.rs` and `multiexp.rs` if `gpu` feature is disabled.
 
 pub struct FFTKernel<E>(PhantomData<E>)
-where
-    E: ScalarEngine;
+    where
+        E: ScalarEngine;
 
 impl<E> FFTKernel<E>
-where
-    E: ScalarEngine,
+    where
+        E: ScalarEngine,
 {
     pub fn fft(_: &mut [E::Fr], _: &E::Fr, _: u32) -> GPUResult<()> {
         return Err(GPUError::GPUDisabled);
@@ -32,12 +32,12 @@ where
 }
 
 pub struct MultiexpKernel<E>(PhantomData<E>)
-where
-    E: ScalarEngine;
+    where
+        E: ScalarEngine;
 
 impl<E> MultiexpKernel<E>
-where
-    E: ScalarEngine,
+    where
+        E: ScalarEngine,
 {
     pub fn multiexp<G>(
         &mut self,
@@ -47,8 +47,8 @@ where
         _: usize,
         _: usize,
     ) -> GPUResult<<G as CurveAffine>::Projective>
-    where
-        G: CurveAffine,
+        where
+            G: CurveAffine,
     {
         return Err(GPUError::GPUDisabled);
     }

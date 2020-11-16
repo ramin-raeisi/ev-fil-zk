@@ -1,9 +1,9 @@
 [package]
 name = "bellperson"
 authors = [
-  "dignifiedquire <me@dignifiedquire.com>",
-  "Sean Bowe <ewillbefull@gmail.com>",
-  "Mikhail Komarov <nemo@nil.foundation>"
+    "dignifiedquire <me@dignifiedquire.com>",
+    "Sean Bowe <ewillbefull@gmail.com>",
+    "Mikhail Komarov <nemo@nil.foundation>"
 ]
 description = "Filecon zk-Proof Library"
 documentation = "https://docs.rs/bellperson"
@@ -45,7 +45,7 @@ paired = { version = "0.21.0", optional = true }
 rust-gpu-tools = { version = "0.2.1", optional = true }
 ff-cl-gen = { version = "0.2.0", optional = true }
 fs2 = { version = "0.4.3", optional = true }
-fil-ocl = {version = "0.19.4", optional = true}
+fil-ocl = { version = "0.19.4", optional = true }
 
 [dev-dependencies]
 hex-literal = "0.2"
