@@ -391,11 +391,6 @@ pub trait ParameterSource<E: Engine>: Send + Sync {
         num_inputs: usize,
         num_aux: usize,
     ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError>;
-    fn get_b_g1(	
-        &self,	
-        num_inputs: usize,	
-        num_aux: usize,	
-    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError>;
     fn get_b_g2(
         &self,
         num_inputs: usize,
@@ -425,14 +420,6 @@ impl<'a, E: Engine> ParameterSource<E> for &'a Parameters<E> {
         _: usize,
     ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {
         Ok(((self.a.clone(), 0), (self.a.clone(), num_inputs)))
-    }
-
-    fn get_b_g1(	
-        &self,	
-        num_inputs: usize,	
-        _: usize,	
-    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {	
-        Ok(((self.b_g1.clone(), 0), (self.b_g1.clone(), num_inputs)))	
     }
 
     fn get_b_g2(

@@ -96,23 +96,6 @@ impl<'a, E: Engine> ParameterSource<E> for &'a MappedParameters<E> {
         Ok(((builder.clone(), 0), (builder, num_inputs)))
     }
 
-    fn get_b_g1(
-        &self,
-        num_inputs: usize,
-        _num_b_g1: usize,
-    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {
-        let builder = self
-            .b_g1
-            .par_iter()
-            .cloned()
-            .map(|b_g1| read_g1::<E>(&self.params, b_g1, self.checked))
-            .collect::<Result<_, _>>()?;
-
-        let builder: Arc<Vec<_>> = Arc::new(builder);
-
-        Ok(((builder.clone(), 0), (builder, num_inputs)))
-    }
-
     fn get_b_g2(
         &self,
         num_inputs: usize,
