@@ -150,7 +150,7 @@ pub mod multiexp;
 pub mod util_cs;
 use ff::{Field, ScalarEngine};
 
-use rustc_hash::FxHashMap as HashMap;
+use hashbrown::HashMap as HashMap;
 use std::io;
 use std::marker::PhantomData;
 use std::ops::{Add, Sub};
@@ -204,7 +204,7 @@ impl<E: ScalarEngine> Default for LinearCombination<E> {
 
 impl<E: ScalarEngine> LinearCombination<E> {
     pub fn zero() -> LinearCombination<E> {
-        LinearCombination(HashMap::default())
+        LinearCombination(HashMap::new())
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&Variable, &E::Fr)> + '_ {
