@@ -90,7 +90,7 @@ fn calc_chunk_size<E>(mem: u64, work_size: usize) -> usize
         .min(0f64);
 
     let aff_size = std::mem::size_of::<E::G1Affine>() + std::mem::size_of::<E::G2Affine>();
-    let exp_size = exp_size::<E::Fr>();
+    let exp_size = exp_size::<E>();
     let proj_size = std::mem::size_of::<E::G1>() + std::mem::size_of::<E::G2>();
     ((((mem as f64) * (1f64 - memory_padding)) as usize)
         - (work_size * ((1 << MAX_WINDOW_SIZE) + 1) * proj_size))
@@ -114,7 +114,7 @@ impl<E> MultiexpKernel<E>
     }
 
     fn chunk_size_of(program: &opencl::Program, work_size: usize) -> usize {
-        let exp_bits = exp_size::<E::Fr>() * 8;
+        let exp_bits = exp_size::<E>() * 8;
         let max_n = calc_chunk_size::<E>(program.device().memory(), work_size);
         let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
         std::cmp::min(max_n, best_n)
