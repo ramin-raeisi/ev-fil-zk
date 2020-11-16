@@ -294,9 +294,9 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
             circuit.synthesize(&mut prover)?;
 
             for i in 0..prover.input_assignment.len() {
-                let a = LinearCombination::zero() + Variable(Index::Input(i));
-                let b = LinearCombination::zero();
-                let c = LinearCombination::zero();
+                let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
+                let b = LinearCombination::<E>::zero();
+                let c = LinearCombination::<E>::zero();
 
                 prover.a.push(Scalar(eval(
                     &a,
