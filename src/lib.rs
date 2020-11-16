@@ -145,7 +145,6 @@ pub mod gadgets;
 pub mod gpu;
 #[cfg(feature = "groth16")]
 pub mod groth16;
-pub mod multicore;
 pub mod multiexp;
 
 pub mod util_cs;

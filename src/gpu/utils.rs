@@ -21,9 +21,13 @@ lazy_static::lazy_static! {
             ("Tesla T4".to_string(), 2560),
             ("Quadro M5000".to_string(), 2048),
 
-            ("GeForce RTX 3090".to_string(), 10496),
-            ("GeForce RTX 3080".to_string(), 8704),
+            ("GeForce RTX 3060".to_string(), 3840),
+            ("GeForce RTX 3060 Ti".to_string(), 4864),
             ("GeForce RTX 3070".to_string(), 5888),
+            ("GeForce RTX 3070 16GB".to_string(), 5888),
+            ("GeForce RTX 3080".to_string(), 8704),
+            ("GeForce RTX 3080 20GB".to_string(), 8704),
+            ("GeForce RTX 3090".to_string(), 10496),
 
             ("GeForce RTX 2080 Ti".to_string(), 4352),
             ("GeForce RTX 2080 SUPER".to_string(), 3072),
@@ -56,6 +60,11 @@ lazy_static::lazy_static! {
 }
 
 const DEFAULT_CORE_COUNT: usize = 2560;
+
+pub fn best_work_size(d: &opencl::Device) -> usize {
+    get_core_count(d) * 2
+}
+
 pub fn get_core_count(d: &opencl::Device) -> usize {
     let name = d.name();
     match CORE_COUNTS.get(&name[..]) {
