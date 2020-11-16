@@ -70,9 +70,9 @@ impl<E: Engine> Parameters<E> {
             writer.write_all(g.into_uncompressed().as_ref())?;
         }
 
-        writer.write_u32::<BigEndian>(self.b_g1.len() as u32)?;
-        for g in &self.b_g1[..] {
-            writer.write_all(g.into_uncompressed().as_ref())?;
+        writer.write_u32::<BigEndian>(self.b_g1.len() as u32)?;	
+        for g in &self.b_g1[..] {	
+            writer.write_all(g.into_uncompressed().as_ref())?;	
         }
 
         writer.write_u32::<BigEndian>(self.b_g2.len() as u32)?;
@@ -354,11 +354,11 @@ impl<E: Engine> Parameters<E> {
             }
         }
 
-        {
-            let len = reader.read_u32::<BigEndian>()? as usize;
-            for _ in 0..len {
-                b_g1.push(read_g1(&mut reader)?);
-            }
+        {	
+            let len = reader.read_u32::<BigEndian>()? as usize;	
+            for _ in 0..len {	
+                b_g1.push(read_g1(&mut reader)?);	
+            }	
         }
 
         {
@@ -391,10 +391,10 @@ pub trait ParameterSource<E: Engine>: Send + Sync {
         num_inputs: usize,
         num_aux: usize,
     ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError>;
-    fn get_b_g1(
-        &self,
-        num_inputs: usize,
-        num_aux: usize,
+    fn get_b_g1(	
+        &self,	
+        num_inputs: usize,	
+        num_aux: usize,	
     ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError>;
     fn get_b_g2(
         &self,
@@ -427,12 +427,12 @@ impl<'a, E: Engine> ParameterSource<E> for &'a Parameters<E> {
         Ok(((self.a.clone(), 0), (self.a.clone(), num_inputs)))
     }
 
-    fn get_b_g1(
-        &self,
-        num_inputs: usize,
-        _: usize,
-    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {
-        Ok(((self.b_g1.clone(), 0), (self.b_g1.clone(), num_inputs)))
+    fn get_b_g1(	
+        &self,	
+        num_inputs: usize,	
+        _: usize,	
+    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {	
+        Ok(((self.b_g1.clone(), 0), (self.b_g1.clone(), num_inputs)))	
     }
 
     fn get_b_g2(

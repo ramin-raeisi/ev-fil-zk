@@ -431,23 +431,6 @@ where
             let b_aux_density = Arc::new(prover.b_aux_density.clone());
             let b_aux_density_total = b_aux_density.get_total_density();
 
-            let (b_g1_inputs_source, b_g1_aux_source) =
-                params.get_b_g1(b_input_density_total, b_aux_density_total)?;
-
-            let b_g1_inputs = multiexp(
-                b_g1_inputs_source,
-                b_input_density.clone(),
-                input_assignment.clone(),
-                Some(&DEVICE_POOL),
-            );
-
-            let b_g1_aux = multiexp(
-                b_g1_aux_source,
-                b_aux_density.clone(),
-                aux_assignment.clone(),
-                Some(&DEVICE_POOL),
-            );
-
             let (b_g2_inputs_source, b_g2_aux_source) =
                 params.get_b_g2(b_input_density_total, b_aux_density_total)?;
 
@@ -467,8 +450,6 @@ where
             Ok((
                 a_inputs,
                 a_aux,
-                b_g1_inputs,
-                b_g1_aux,
                 b_g2_inputs,
                 b_g2_aux,
             ))
@@ -479,57 +460,53 @@ where
         .into_par_iter()
         .zip(l_s.into_par_iter())
         .zip(inputs.into_par_iter())
-        .zip(r_s.into_par_iter())
-        .zip(s_s.into_par_iter())
-        .map(
-            |(
-                (((h, l), (a_inputs, a_aux, b_g1_inputs, b_g1_aux, b_g2_inputs, b_g2_aux)), r),
-                s,
-            )| {
-                if vk.delta_g1.is_zero() || vk.delta_g2.is_zero() {
-                    // If this element is zero, someone is trying to perform a
-                    // subversion-CRS attack.
-                    return Err(SynthesisError::UnexpectedIdentity);
-                }
+        .map(|((h, l), (a_inputs, a_aux, b_g2_inputs, b_g2_aux))| {
+            if vk.delta_g1.is_zero() || vk.delta_g2.is_zero() {
+                // If this element is zero, someone is trying to perform a
+                // subversion-CRS attack.
+                return Err(SynthesisError::UnexpectedIdentity);
+            }
 
-                let mut g_a = vk.delta_g1.mul(r);
-                g_a.add_assign_mixed(&vk.alpha_g1);
-                let mut g_b = vk.delta_g2.mul(s);
-                g_b.add_assign_mixed(&vk.beta_g2);
-                let mut g_c;
-                {
-                    let mut rs = r;
-                    rs.mul_assign(&s);
+            info!("vk.alpha_g1.into_projective()");
+            let mut g_a = vk.alpha_g1.into_projective();
+            info!("vk.beta_g2.into_projective()");
+            let mut g_b = vk.beta_g2.into_projective();
+            info!("E::G1::zero()");
+            let mut g_c = E::G1::zero();
 
-                    g_c = vk.delta_g1.mul(rs);
-                    g_c.add_assign(&vk.alpha_g1.mul(s));
-                    g_c.add_assign(&vk.beta_g1.mul(r));
-                }
-                let mut a_answer = a_inputs.wait()?;
-                a_answer.add_assign(&a_aux.wait()?);
-                g_a.add_assign(&a_answer);
-                a_answer.mul_assign(s);
-                g_c.add_assign(&a_answer);
+            info!("a_inputs.wait()");
+            let mut a_answer = a_inputs.wait()?;
+            info!("a_answer.add_assign(&a_aux.wait()?)");
+            a_answer.add_assign(&a_aux.wait()?);
+            info!("g_a.add_assign(&a_answer)");
+            g_a.add_assign(&a_answer);
 
-                let mut b1_answer = b_g1_inputs.wait()?;
-                b1_answer.add_assign(&b_g1_aux.wait()?);
-                let mut b2_answer = b_g2_inputs.wait()?;
-                b2_answer.add_assign(&b_g2_aux.wait()?);
 
-                g_b.add_assign(&b2_answer);
-                b1_answer.mul_assign(r);
-                g_c.add_assign(&b1_answer);
-                g_c.add_assign(&h.wait()?);
-                g_c.add_assign(&l.wait()?);
+            info!("b_g2_inputs.wait()");
+            let mut b2_answer = b_g2_inputs.wait()?;
+            info!("b2_answer.add_assign(&b_g2_aux.wait()?)");
+            b2_answer.add_assign(&b_g2_aux.wait()?);
+            info!("g_b.add_assign(&b2_answer)");
+            g_b.add_assign(&b2_answer);
 
-                Ok(Proof {
-                    a: g_a.into_affine(),
-                    b: g_b.into_affine(),
-                    c: g_c.into_affine(),
-                })
-            },
-        )
-        .collect::<Result<Vec<_>, SynthesisError>>()?;
+            info!("g_c.add_assign(&h.wait()?)");
+            g_c.add_assign(&h.wait()?);
+            info!("g_c.add_assign(&l.wait()?)");
+            g_c.add_assign(&l.wait()?);
+
+            info!("g_a.into_affine()");
+            let p_a = g_a.into_affine();
+            info!("g_b.into_affine()");
+            let p_b = g_b.into_affine();
+            info!("g_c.into_affine()");
+            let p_c = g_c.into_affine();
+
+            Ok(Proof {
+                a: p_a,
+                b: p_b,
+                c: p_c,
+            })
+        }).collect::<Result<Vec<_>, SynthesisError>>()?;
 
     let proof_time = start.elapsed();
     info!("prover time: {:?}", proof_time);

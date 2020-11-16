@@ -473,11 +473,11 @@ where
                 .map(|e| e.into_affine())
                 .collect(),
         ),
-        b_g1: Arc::new(
-            b_g1.into_iter()
-                .filter(|e| !e.is_zero())
-                .map(|e| e.into_affine())
-                .collect(),
+        b_g1: Arc::new(	
+            b_g1.into_iter()	
+                .filter(|e| !e.is_zero())	
+                .map(|e| e.into_affine())	
+                .collect(),	
         ),
         b_g2: Arc::new(
             b_g2.into_iter()
