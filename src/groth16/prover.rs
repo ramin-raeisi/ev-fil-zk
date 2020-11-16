@@ -468,44 +468,26 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 return Err(SynthesisError::UnexpectedIdentity);
             }
 
-            info!("vk.alpha_g1.into_projective()");
             let mut g_a = vk.alpha_g1.into_projective();
-            info!("vk.beta_g2.into_projective()");
             let mut g_b = vk.beta_g2.into_projective();
-            info!("E::G1::zero()");
             let mut g_c = E::G1::zero();
 
-            info!("a_inputs.wait()");
             let mut a_answer = a_inputs.wait()?;
-            info!("a_answer.add_assign(&a_aux.wait()?)");
             a_answer.add_assign(&a_aux.wait()?);
-            info!("g_a.add_assign(&a_answer)");
             g_a.add_assign(&a_answer);
 
 
-            info!("b_g2_inputs.wait()");
             let mut b2_answer = b_g2_inputs.wait()?;
-            info!("b2_answer.add_assign(&b_g2_aux.wait()?)");
             b2_answer.add_assign(&b_g2_aux.wait()?);
-            info!("g_b.add_assign(&b2_answer)");
             g_b.add_assign(&b2_answer);
 
-            info!("g_c.add_assign(&h.wait()?)");
             g_c.add_assign(&h.wait()?);
-            info!("g_c.add_assign(&l.wait()?)");
             g_c.add_assign(&l.wait()?);
 
-            info!("g_a.into_affine()");
-            let p_a = g_a.into_affine();
-            info!("g_b.into_affine()");
-            let p_b = g_b.into_affine();
-            info!("g_c.into_affine()");
-            let p_c = g_c.into_affine();
-
             Ok(Proof {
-                a: p_a,
-                b: p_b,
-                c: p_c,
+                a: g_a.into_affine(),
+                b: g_b.into_affine(),
+                c: g_c.into_affine(),
             })
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
 
