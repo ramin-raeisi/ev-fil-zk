@@ -263,6 +263,9 @@ impl<E> MultiexpKernel<E>
         let exps = &exps[..n];
         let mut chunk_size: usize = std::usize::MAX;
 
+        info!("Running multiexp with n = {}", n);
+
+        info!("Devices best work size: ");
         for p in scheduler::DEVICE_POOL.devices.iter() {
             let data = p.lock().unwrap();
             let cur: usize = MultiexpKernel::<E>::chunk_size_of(&data,
@@ -271,7 +274,14 @@ impl<E> MultiexpKernel<E>
             if cur < chunk_size {
                 chunk_size = cur;
             }
+
+            info!("{} for {} (bus_id = {})",
+                cur,
+                data.device().name(),
+                data.device().bus_id());
         }
+
+        info!("The minimum chunk size = {}", chunk_size);
 
         let result = bases.par_chunks(chunk_size)
             .zip(exps.par_chunks(chunk_size))
