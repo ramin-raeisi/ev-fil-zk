@@ -68,9 +68,9 @@ struct ProvingAssignment<E: Engine> {
     b_aux_density: Arc<Mutex<DensityTracker>>,
 
     // Evaluations of A, B, C polynomials
-    a: Vec<Scalar<E>>,
-    b: Vec<Scalar<E>>,
-    c: Vec<Scalar<E>>,
+    a: Arc<Mutex<Vec<Scalar<E>>>>,
+    b: Arc<Mutex<Vec<Scalar<E>>>>,
+    c: Arc<Mutex<Vec<Scalar<E>>>>,
 
     // Assignments of variables
     input_assignment: Vec<E::Fr>,
@@ -90,7 +90,7 @@ impl<E: Engine> fmt::Debug for ProvingAssignment<E> {
             .field(
                 "a",
                 &self
-                    .a
+                    .a.lock().unwrap()
                     .iter()
                     .map(|v| format!("Fr({:?})", v.0))
                     .collect::<Vec<_>>(),
@@ -98,7 +98,7 @@ impl<E: Engine> fmt::Debug for ProvingAssignment<E> {
             .field(
                 "b",
                 &self
-                    .b
+                    .b.lock().unwrap()
                     .iter()
                     .map(|v| format!("Fr({:?})", v.0))
                     .collect::<Vec<_>>(),
@@ -106,7 +106,7 @@ impl<E: Engine> fmt::Debug for ProvingAssignment<E> {
             .field(
                 "c",
                 &self
-                    .c
+                    .c.lock().unwrap()
                     .iter()
                     .map(|v| format!("Fr({:?})", v.0))
                     .collect::<Vec<_>>(),
@@ -124,9 +124,9 @@ impl<E: Engine> PartialEq for ProvingAssignment<E> {
             .deref()
             && self.b_aux_density.lock().unwrap().deref() == other.b_aux_density.lock().unwrap()
             .deref()
-            && self.a == other.a
-            && self.b == other.b
-            && self.c == other.c
+            && self.a.lock().unwrap().deref() == other.a.lock().unwrap().deref()
+            && self.b.lock().unwrap().deref() == other.b.lock().unwrap().deref()
+            && self.c.lock().unwrap().deref() == other.c.lock().unwrap().deref()
             && self.input_assignment == other.input_assignment
             && self.aux_assignment == other.aux_assignment
     }
@@ -140,9 +140,9 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             a_aux_density: Arc::new(Mutex::new(DensityTracker::new())),
             b_input_density: Arc::new(Mutex::new(DensityTracker::new())),
             b_aux_density: Arc::new(Mutex::new(DensityTracker::new())),
-            a: Vec::new(),
-            b: Vec::new(),
-            c: Vec::new(),
+            a: Arc::new(Mutex::new(Vec::new())),
+            b: Arc::new(Mutex::new(Vec::new())),
+            c: Arc::new(Mutex::new(Vec::new())),
             input_assignment: vec![],
             aux_assignment: vec![],
         }
@@ -185,7 +185,7 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         let b = b(LinearCombination::zero());
         let c = c(LinearCombination::zero());
 
-        self.a.push(Scalar(eval(
+        self.a.lock().unwrap().push(Scalar(eval(
             &a,
             // Inputs have full density in the A query
             // because there are constraints of the
@@ -195,14 +195,14 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             &self.input_assignment,
             &self.aux_assignment,
         )));
-        self.b.push(Scalar(eval(
+        self.b.lock().unwrap().push(Scalar(eval(
             &b,
             Some(&mut self.b_input_density),
             Some(&mut self.b_aux_density),
             &self.input_assignment,
             &self.aux_assignment,
         )));
-        self.c.push(Scalar(eval(
+        self.c.lock().unwrap().push(Scalar(eval(
             &c,
             // There is no C polynomial query,
             // though there is an (beta)A + (alpha)B + C
@@ -243,9 +243,9 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.b_aux_density.lock().unwrap().extend(other.b_aux_density.lock().unwrap().clone(),
                                                   false);
 
-        self.a.extend(other.a);
-        self.b.extend(other.b);
-        self.c.extend(other.c);
+        self.a.lock().unwrap().extend(other.a.lock().unwrap().deref());
+        self.b.lock().unwrap().extend(other.b.lock().unwrap().deref());
+        self.c.lock().unwrap().extend(other.c.lock().unwrap().deref());
 
         self.input_assignment
             // Skip first input, which must have been a temporarily allocated one variable.
@@ -305,42 +305,43 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             circuit.synthesize(&mut prover)?;
 
-            rayon::scope(|scope| {
-                join_all(vec![
-                    scope.spawn_future(ok::<_, ()>(prover.a.par_extend(prover.input_assignment
-                        .par_iter()
-                        .enumerate().map(|(i, _v)| {
-                        let aad: &Arc<Mutex<DensityTracker>> = &prover.a_aux_density;
+            let a_len = prover.a.lock().unwrap().len();
+            let b_len = prover.b.lock().unwrap().len();
+            let c_len = prover.c.lock().unwrap().len();
 
-                        let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
-                        Scalar(eval(
+            prover.a.lock().unwrap().resize(a_len + prover.input_assignment.len(), Scalar(E::Fr::zero()));
+            prover.b.lock().unwrap().resize(b_len + prover.input_assignment.len(), Scalar(E::Fr::zero()));
+            prover.c.lock().unwrap().resize(c_len + prover.input_assignment.len(), Scalar(E::Fr::zero()));
+
+            prover.input_assignment.par_iter().enumerate().for_each(|(i, _v)| {
+                let a: LinearCombination<E> = LinearCombination::zero() + Variable(Index::Input(i));
+                let b: LinearCombination<E> = LinearCombination::zero();
+                let c: LinearCombination<E> = LinearCombination::zero();
+
+                let mut coeff = vec![&prover.a, &prover.b, &prover.c];
+
+                coeff.par_iter_mut().enumerate().for_each(|(j, cf)| {
+                    if j == 0 {
+                        cf.lock().unwrap()[a_len + i] = Scalar(eval(
                             &a,
                             // Inputs have full density in the A query
                             // because there are constraints of the
                             // form x * 0 = 0 for each input.
                             None,
-                            Some(aad),
+                            Some(&prover.a_aux_density),
                             &prover.input_assignment,
                             &prover.aux_assignment,
-                        ))
-                    })))), scope.spawn_future(ok::<_, ()>(prover.b.par_extend(prover
-                        .input_assignment
-                        .par_iter().map(|_v| {
-                        let bid: &Arc<Mutex<DensityTracker>> = &prover.b_input_density;
-                        let bad: &Arc<Mutex<DensityTracker>> = &prover.b_aux_density;
-
-                        let b = LinearCombination::<E>::zero();
-                        Scalar(eval(
+                        ));
+                    } else if j == 1 {
+                        cf.lock().unwrap()[b_len + i] = Scalar(eval(
                             &b,
-                            Some(bid),
-                            Some(bad),
+                            Some(&prover.b_input_density),
+                            Some(&prover.b_aux_density),
                             &prover.input_assignment,
                             &prover.aux_assignment,
-                        ))
-                    })))), scope.spawn_future(ok::<_, ()>(prover.c.par_extend(prover.input_assignment
-                        .par_iter().map(|_v| {
-                        let c = LinearCombination::<E>::zero();
-                        Scalar(eval(
+                        ));
+                    } else if j == 2 {
+                        cf.lock().unwrap()[c_len + i] = Scalar(eval(
                             &c,
                             // There is no C polynomial query,
                             // though there is an (beta)A + (alpha)B + C
@@ -350,44 +351,10 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                             None,
                             &prover.input_assignment,
                             &prover.aux_assignment,
-                        ))
-                    }))))]);
+                        ));
+                    }
+                });
             });
-
-            for i in 0..prover.input_assignment.len() {
-                let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
-                let b = LinearCombination::<E>::zero();
-                let c = LinearCombination::<E>::zero();
-
-                prover.a.push(Scalar(eval(
-                    &a,
-                    // Inputs have full density in the A query
-                    // because there are constraints of the
-                    // form x * 0 = 0 for each input.
-                    None,
-                    Some(&mut prover.a_aux_density),
-                    &prover.input_assignment,
-                    &prover.aux_assignment,
-                )));
-                prover.b.push(Scalar(eval(
-                    &b,
-                    Some(&mut prover.b_input_density),
-                    Some(&mut prover.b_aux_density),
-                    &prover.input_assignment,
-                    &prover.aux_assignment,
-                )));
-                prover.c.push(Scalar(eval(
-                    &c,
-                    // There is no C polynomial query,
-                    // though there is an (beta)A + (alpha)B + C
-                    // query for all aux variables.
-                    // However, that query has full density.
-                    None,
-                    None,
-                    &prover.input_assignment,
-                    &prover.aux_assignment,
-                )));
-            }
 
             Ok(prover)
         })
@@ -399,12 +366,12 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
     let input_len = provers[0].input_assignment.len();
     let vk = params.get_vk(input_len)?;
-    let n = provers[0].a.len();
+    let n = provers[0].a.lock().unwrap().len();
 
     // Make sure all circuits have the same input len.
     provers.par_iter().for_each(|prover| {
         assert_eq!(
-            prover.a.len(),
+            prover.a.lock().unwrap().len(),
             n,
             "only equally sized circuits are supported"
         );
@@ -413,12 +380,12 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
     let a_s = provers
         .par_iter_mut()
         .map(|prover| {
-            let mut a =
-                EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.a, Vec::new()))?;
-            let mut b =
-                EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.b, Vec::new()))?;
-            let mut c =
-                EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.c, Vec::new()))?;
+            let mut a = EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.a.lock().unwrap(),
+                                                                        Vec::new()))?;
+            let mut b = EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.b.lock().unwrap(),
+                                                                        Vec::new()))?;
+            let mut c = EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.c.lock().unwrap(),
+                                                                        Vec::new()))?;
 
             let mut coeff = vec![&mut a, &mut b, &mut c];
 
