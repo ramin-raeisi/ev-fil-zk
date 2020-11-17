@@ -24,7 +24,9 @@ fn eval<E: Engine>(
     input_assignment: &[E::Fr],
     aux_assignment: &[E::Fr],
 ) -> E::Fr {
-    let vres = lc.0.par_iter().map(|(index, coeff)| {
+    let mut res: E::Fr = E::Fr::zero();
+
+    lc.0.par_iter().map(|(index, coeff)| {
         let mut tmp;
         let mut id = input_density;
         let mut ad = aux_density;
@@ -50,13 +52,9 @@ fn eval<E: Engine>(
             tmp.mul_assign(coeff);
             tmp
         }
-    }).collect::<Vec<_>>();
-
-    let mut res: E::Fr = E::Fr::zero();
-
-    for i in vres {
+    }).collect::<Vec<_>>().for_each(|i| {
         res.add_assign(&i);
-    }
+    });
 
     res
 }
