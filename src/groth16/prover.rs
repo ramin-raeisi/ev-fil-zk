@@ -346,9 +346,9 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                     }))
                 ));
 
-                afut.wait().unwrap();
-                bfut.wait().unwrap();
-                cfut.wait().unwrap();
+                afut.rayon_wait().unwrap();
+                bfut.rayon_wait().unwrap();
+                cfut.rayon_wait().unwrap();
             });
 
             Ok(prover)
