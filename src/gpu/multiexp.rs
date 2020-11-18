@@ -117,6 +117,7 @@ impl<E> MultiexpKernel<E>
         let exp_bits = exp_size::<E>() * 8;
         let max_n = calc_chunk_size::<E>(program.device().memory(), work_size);
         let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
+        info!("chunk_size_of: max_n = {}, best_n = {}. For best_work_size: {}", max_n, best_n, work_size);
         std::cmp::min(max_n, best_n)
     }
 
@@ -265,7 +266,6 @@ impl<E> MultiexpKernel<E>
 
         info!("Running multiexp with n = {}", n);
 
-        info!("Devices best work size: ");
         for p in scheduler::DEVICE_POOL.devices.iter() {
             let data = p.lock().unwrap();
             let cur: usize = MultiexpKernel::<E>::chunk_size_of(&data,
@@ -274,14 +274,7 @@ impl<E> MultiexpKernel<E>
             if cur < chunk_size {
                 chunk_size = cur;
             }
-
-            info!("{} for {} (bus_id = {})",
-                cur,
-                data.device().name(),
-                data.device().bus_id());
         }
-
-        info!("The minimum chunk size = {}", chunk_size);
 
         let result = bases.par_chunks(chunk_size)
             .zip(exps.par_chunks(chunk_size))
