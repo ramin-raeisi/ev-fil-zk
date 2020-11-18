@@ -305,7 +305,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             v.par_iter_mut().enumerate().for_each(|(i, x)| {
                 if i == 0 {
-                    x.par_extend(lia.par_iter().enumerate().map(|(i, _v)| {
+                    x.par_extend(lia.par_iter().enumerate().for_each(|(i, _v)| {
                         let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
 
                         Scalar(eval(
@@ -320,7 +320,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                         ))
                     }));
                 } else if i == 1 {
-                    x.par_extend(lia.par_iter().map(|_v| {
+                    x.par_extend(lia.par_iter().for_each(|_v| {
                         let b = LinearCombination::<E>::zero();
                         Scalar(eval(
                             &b,
@@ -331,7 +331,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                         ))
                     }))
                 } else if i == 2 {
-                    x.par_extend(lia.par_iter().map(|_v| {
+                    x.par_extend(lia.par_iter().for_each(|_v| {
                         let c = LinearCombination::<E>::zero();
                         Scalar(eval(
                             &c,
