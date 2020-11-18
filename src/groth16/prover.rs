@@ -295,7 +295,11 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             circuit.synthesize(&mut prover)?;
 
-            let mut v = vec![&mut prover.a, &mut prover.b, &mut prover.c];
+            let pra: Arc<Mutex<&mut Vec<Scalar<E>>>> = Arc::new(Mutex::new(&mut prover.a));
+            let prb: Arc<Mutex<&mut Vec<Scalar<E>>>> = Arc::new(Mutex::new(&mut prover.b));
+            let prc: Arc<Mutex<&mut Vec<Scalar<E>>>> = Arc::new(Mutex::new(&mut prover.c));
+
+            let mut v = vec![&pra, &prb, &prc];
 
             let lia: &Vec<E::Fr> = &prover.input_assignment;
             let laa: &Vec<E::Fr> = &prover.aux_assignment;
@@ -305,10 +309,10 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             v.par_iter_mut().enumerate().for_each(|(i, x)| {
                 if i == 0 {
-                    x.par_extend(lia.par_iter().enumerate().map(|(i, _v)| {
+                    lia.par_iter().enumerate().for_each(|(i, _v)| {
                         let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
 
-                        Scalar(eval(
+                        pra.lock().unwrap().push(Scalar(eval(
                             &a,
                             // Inputs have full density in the A query
                             // because there are constraints of the
@@ -317,23 +321,23 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                             Some(aad.lock().unwrap().deref_mut()),
                             lia,
                             laa,
-                        ))
-                    }));
+                        )));
+                    });
                 } else if i == 1 {
-                    x.par_extend(lia.par_iter().map(|_v| {
+                    lia.par_iter().for_each(|_v| {
                         let b = LinearCombination::<E>::zero();
-                        Scalar(eval(
+                        prb.lock().unwrap().push(Scalar(eval(
                             &b,
                             Some(bid.lock().unwrap().deref_mut()),
                             Some(bad.lock().unwrap().deref_mut()),
                             lia,
                             laa,
-                        ))
-                    }));
+                        )));
+                    });
                 } else if i == 2 {
-                    x.par_extend(lia.par_iter().map(|_v| {
+                    lia.par_iter().for_each(|_v| {
                         let c = LinearCombination::<E>::zero();
-                        Scalar(eval(
+                        prc.lock().unwrap().push(Scalar(eval(
                             &c,
                             // There is no C polynomial query,
                             // though there is an (beta)A + (alpha)B + C
@@ -343,8 +347,8 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                             None,
                             lia,
                             laa,
-                        ))
-                    }));
+                        )))
+                    });
                 }
             });
 
