@@ -295,7 +295,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             circuit.synthesize(&mut prover)?;
 
-            let v = vec![&mut prover.a, &mut prover.b, &mut prover.c];
+            let mut v = vec![&mut prover.a, &mut prover.b, &mut prover.c];
 
             let lia: &Vec<E::Fr> = &prover.input_assignment;
             let laa: &Vec<E::Fr> = &prover.aux_assignment;
