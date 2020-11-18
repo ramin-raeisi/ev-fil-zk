@@ -295,15 +295,17 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             circuit.synthesize(&mut prover)?;
 
-            rayon::scope(|scope| {
-                let lia: &Vec<E::Fr> = &prover.input_assignment;
-                let laa: &Vec<E::Fr> = &prover.aux_assignment;
-                let aad = &mut prover.a_aux_density;
-                let bid = &mut prover.b_input_density;
-                let bad = &mut prover.b_aux_density;
+            let v = vec![&mut prover.a, &mut prover.b, &mut prover.c];
 
-                let afut = scope.spawn_future(futures::future::ok::<_, ()>(
-                    prover.a.par_extend(lia.par_iter().enumerate().map(|(i, _v)| {
+            let lia: &Vec<E::Fr> = &prover.input_assignment;
+            let laa: &Vec<E::Fr> = &prover.aux_assignment;
+            let aad = &mut prover.a_aux_density;
+            let bid = &mut prover.b_input_density;
+            let bad = &mut prover.b_aux_density;
+
+            v.par_iter_mut().enumerate().for_each(|(i, x)| {
+                if i == 0 {
+                    x.par_extend(lia.par_iter().enumerate().map(|(i, _v)| {
                         let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
 
                         Scalar(eval(
@@ -316,9 +318,9 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                             lia,
                             laa,
                         ))
-                    }))));
-                let bfut = scope.spawn_future(futures::future::ok::<_, ()>(
-                    prover.b.par_extend(lia.par_iter().map(|_v| {
+                    }));
+                } else if i == 1 {
+                    x.par_extend(lia.par_iter().map(|_v| {
                         let b = LinearCombination::<E>::zero();
                         Scalar(eval(
                             &b,
@@ -328,9 +330,8 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                             laa,
                         ))
                     }))
-                ));
-                let cfut = scope.spawn_future(futures::future::ok::<_, ()>(
-                    prover.c.par_extend(lia.par_iter().map(|_v| {
+                } else if i == 2 {
+                    x.par_extend(lia.par_iter().map(|_v| {
                         let c = LinearCombination::<E>::zero();
                         Scalar(eval(
                             &c,
@@ -344,11 +345,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                             laa,
                         ))
                     }))
-                ));
-
-                afut.wait().unwrap();
-                bfut.wait().unwrap();
-                cfut.wait().unwrap();
+                }
             });
 
             Ok(prover)
