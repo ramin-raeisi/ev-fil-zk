@@ -329,7 +329,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                             lia,
                             laa,
                         ))
-                    }))
+                    }));
                 } else if i == 2 {
                     x.par_extend(lia.par_iter().for_each(|_v| {
                         let c = LinearCombination::<E>::zero();
@@ -344,7 +344,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                             lia,
                             laa,
                         ))
-                    }))
+                    }));
                 }
             });
 
