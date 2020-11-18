@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::bls::Engine;
@@ -57,9 +57,9 @@ fn eval<E: Engine>(
 
 struct ProvingAssignment<E: Engine> {
     // Density of queries
-    a_aux_density: DensityTracker,
-    b_input_density: DensityTracker,
-    b_aux_density: DensityTracker,
+    a_aux_density: Arc<Mutex<DensityTracker>>,
+    b_input_density: Arc<Mutex<DensityTracker>>,
+    b_aux_density: Arc<Mutex<DensityTracker>>,
 
     // Evaluations of A, B, C polynomials
     a: Vec<Scalar<E>>,
@@ -72,6 +72,8 @@ struct ProvingAssignment<E: Engine> {
 }
 
 use std::fmt;
+use std::ops::{Deref, DerefMut};
+use rayon_futures::{ScopeFutureExt};
 
 impl<E: Engine> fmt::Debug for ProvingAssignment<E> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -111,9 +113,9 @@ impl<E: Engine> fmt::Debug for ProvingAssignment<E> {
 
 impl<E: Engine> PartialEq for ProvingAssignment<E> {
     fn eq(&self, other: &ProvingAssignment<E>) -> bool {
-        self.a_aux_density == other.a_aux_density
-            && self.b_input_density == other.b_input_density
-            && self.b_aux_density == other.b_aux_density
+        self.a_aux_density.lock().unwrap().deref() == other.a_aux_density.lock().unwrap().deref()
+            && self.b_input_density.lock().unwrap().deref() == other.b_input_density.lock().unwrap().deref()
+            && self.b_aux_density.lock().unwrap().deref() == other.b_aux_density.lock().unwrap().deref()
             && self.a == other.a
             && self.b == other.b
             && self.c == other.c
@@ -127,9 +129,9 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
 
     fn new() -> Self {
         Self {
-            a_aux_density: DensityTracker::new(),
-            b_input_density: DensityTracker::new(),
-            b_aux_density: DensityTracker::new(),
+            a_aux_density: Arc::new(Mutex::new(DensityTracker::new())),
+            b_input_density: Arc::new(Mutex::new(DensityTracker::new())),
+            b_aux_density: Arc::new(Mutex::new(DensityTracker::new())),
             a: vec![],
             b: vec![],
             c: vec![],
@@ -145,8 +147,8 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             AR: Into<String>,
     {
         self.aux_assignment.push(f()?);
-        self.a_aux_density.add_element();
-        self.b_aux_density.add_element();
+        self.a_aux_density.lock().unwrap().add_element();
+        self.b_aux_density.lock().unwrap().add_element();
 
         Ok(Variable(Index::Aux(self.aux_assignment.len() - 1)))
     }
@@ -158,7 +160,7 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             AR: Into<String>,
     {
         self.input_assignment.push(f()?);
-        self.b_input_density.add_element();
+        self.b_input_density.lock().unwrap().add_element();
 
         Ok(Variable(Index::Input(self.input_assignment.len() - 1)))
     }
@@ -181,14 +183,14 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             // because there are constraints of the
             // form x * 0 = 0 for each input.
             None,
-            Some(&mut self.a_aux_density),
+            Some(&mut self.a_aux_density.lock().unwrap()),
             &self.input_assignment,
             &self.aux_assignment,
         )));
         self.b.push(Scalar(eval(
             &b,
-            Some(&mut self.b_input_density),
-            Some(&mut self.b_aux_density),
+            Some(&mut self.b_input_density.lock().unwrap()),
+            Some(&mut self.b_aux_density.lock().unwrap()),
             &self.input_assignment,
             &self.aux_assignment,
         )));
@@ -226,9 +228,10 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     }
 
     fn extend(&mut self, other: Self) {
-        self.a_aux_density.extend(other.a_aux_density, false);
-        self.b_input_density.extend(other.b_input_density, true);
-        self.b_aux_density.extend(other.b_aux_density, false);
+        self.a_aux_density.lock().unwrap().extend(other.a_aux_density.lock().unwrap().clone(),
+                                                  false);
+        self.b_input_density.lock().unwrap().extend(other.b_input_density.lock().unwrap().clone(), true);
+        self.b_aux_density.lock().unwrap().extend(other.b_aux_density.lock().unwrap().clone(), false);
 
         self.a.extend(other.a);
         self.b.extend(other.b);
@@ -292,9 +295,61 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             circuit.synthesize(&mut prover)?;
 
-            for i in 0..prover.input_assignment.len() {
-                prover.enforce(|| "", |lc| lc + Variable(Index::Input(i)), |lc| lc, |lc| lc);
-            }
+            rayon::scope(|scope| {
+                let lia: &Vec<E::Fr> = &prover.input_assignment;
+                let laa: &Vec<E::Fr> = &prover.aux_assignment;
+                let aad = &mut prover.a_aux_density;
+                let bid = &mut prover.b_input_density;
+                let bad = &mut prover.b_aux_density;
+
+                let afut = scope.spawn_future(futures::future::ok::<_, ()>(
+                    prover.a.par_extend(lia.par_iter().enumerate().map(|(i, _v)| {
+                        let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
+
+                        Scalar(eval(
+                            &a,
+                            // Inputs have full density in the A query
+                            // because there are constraints of the
+                            // form x * 0 = 0 for each input.
+                            None,
+                            Some(aad.lock().unwrap().deref_mut()),
+                            lia,
+                            laa,
+                        ))
+                    }))));
+                let bfut = scope.spawn_future(futures::future::ok::<_, ()>(
+                    prover.b.par_extend(lia.par_iter().map(|_v| {
+                        let b = LinearCombination::<E>::zero();
+                        Scalar(eval(
+                            &b,
+                            Some(bid.lock().unwrap().deref_mut()),
+                            Some(bad.lock().unwrap().deref_mut()),
+                            lia,
+                            laa,
+                        ))
+                    }))
+                ));
+                let cfut = scope.spawn_future(futures::future::ok::<_, ()>(
+                    prover.c.par_extend(lia.par_iter().map(|_v| {
+                        let c = LinearCombination::<E>::zero();
+                        Scalar(eval(
+                            &c,
+                            // There is no C polynomial query,
+                            // though there is an (beta)A + (alpha)B + C
+                            // query for all aux variables.
+                            // However, that query has full density.
+                            None,
+                            None,
+                            lia,
+                            laa,
+                        ))
+                    }))
+                ));
+
+                afut.wait().unwrap();
+                bfut.wait().unwrap();
+                cfut.wait().unwrap();
+            });
 
             Ok(prover)
         })
@@ -408,7 +463,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
         .zip(input_assignments.par_iter())
         .zip(aux_assignments.par_iter())
         .map(|((prover, input_assignment), aux_assignment)| {
-            let a_aux_density_total = prover.a_aux_density.get_total_density();
+            let a_aux_density_total = prover.a_aux_density.lock().unwrap().get_total_density();
 
             let (a_inputs_source, a_aux_source) =
                 params.get_a(input_assignment.len(), a_aux_density_total)?;
@@ -422,14 +477,14 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             let a_aux = multiexp(
                 a_aux_source,
-                Arc::new(prover.a_aux_density.clone()),
+                Arc::new(prover.a_aux_density.lock().unwrap().clone()),
                 aux_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
 
-            let b_input_density = Arc::new(prover.b_input_density.clone());
+            let b_input_density = Arc::new(prover.b_input_density.lock().unwrap().clone());
             let b_input_density_total = b_input_density.get_total_density();
-            let b_aux_density = Arc::new(prover.b_aux_density.clone());
+            let b_aux_density = Arc::new(prover.b_aux_density.lock().unwrap().clone());
             let b_aux_density_total = b_aux_density.get_total_density();
 
             let (b_g2_inputs_source, b_g2_aux_source) =
@@ -475,7 +530,6 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
             let mut a_answer = a_inputs.wait()?;
             a_answer.add_assign(&a_aux.wait()?);
             g_a.add_assign(&a_answer);
-
 
             let mut b2_answer = b_g2_inputs.wait()?;
             b2_answer.add_assign(&b_g2_aux.wait()?);
