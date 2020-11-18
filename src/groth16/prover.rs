@@ -19,38 +19,39 @@ use crate::gpu::{DEVICE_POOL};
 
 fn eval<E: Engine>(
     lc: &LinearCombination<E>,
-    mut input_density: Option<&mut DensityTracker>,
-    mut aux_density: Option<&mut DensityTracker>,
+    mut input_density: Option<&mut Arc<Mutex<DensityTracker>>>,
+    mut aux_density: Option<&mut Arc<Mutex<DensityTracker>>>,
     input_assignment: &[E::Fr],
     aux_assignment: &[E::Fr],
 ) -> E::Fr {
     let mut acc = E::Fr::zero();
 
-    for (&index, &coeff) in lc.0.iter() {
+    lc.0.par_iter().map(|(&index, &coeff)| {
         let mut tmp;
 
         match index {
             Variable(Index::Input(i)) => {
                 tmp = input_assignment[i];
-                if let Some(ref mut v) = input_density {
+                if let Some(ref mut v) = input_density.lock().unwrap() {
                     v.inc(i);
                 }
             }
             Variable(Index::Aux(i)) => {
                 tmp = aux_assignment[i];
-                if let Some(ref mut v) = aux_density {
+                if let Some(ref mut v) = aux_density.lock().unwrap() {
                     v.inc(i);
                 }
             }
         }
 
-        if coeff == E::Fr::one() {
-            acc.add_assign(&tmp);
-        } else {
+        if coeff != E::Fr::one() {
             tmp.mul_assign(&coeff);
-            acc.add_assign(&tmp);
         }
-    }
+
+        tmp
+    }).collect::<Vec<_>>().iter().for_each(|tmp| {
+        acc.add_assign(&tmp);
+    });
 
     acc
 }
@@ -183,14 +184,14 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             // because there are constraints of the
             // form x * 0 = 0 for each input.
             None,
-            Some(&mut self.a_aux_density.lock().unwrap()),
+            Some(&mut self.a_aux_density),
             &self.input_assignment,
             &self.aux_assignment,
         )));
         self.b.push(Scalar(eval(
             &b,
-            Some(&mut self.b_input_density.lock().unwrap()),
-            Some(&mut self.b_aux_density.lock().unwrap()),
+            Some(&mut self.b_input_density),
+            Some(&mut self.b_aux_density),
             &self.input_assignment,
             &self.aux_assignment,
         )));
@@ -295,11 +296,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             circuit.synthesize(&mut prover)?;
 
-            let pra: Arc<Mutex<&mut Vec<Scalar<E>>>> = Arc::new(Mutex::new(&mut prover.a));
-            let prb: Arc<Mutex<&mut Vec<Scalar<E>>>> = Arc::new(Mutex::new(&mut prover.b));
-            let prc: Arc<Mutex<&mut Vec<Scalar<E>>>> = Arc::new(Mutex::new(&mut prover.c));
-
-            let mut v = vec![&pra, &prb, &prc];
+            let mut v = vec![&mut prover.a, &mut prover.b, &mut prover.c];
 
             let lia: &Vec<E::Fr> = &prover.input_assignment;
             let laa: &Vec<E::Fr> = &prover.aux_assignment;
@@ -309,35 +306,35 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
             v.par_iter_mut().enumerate().for_each(|(i, x)| {
                 if i == 0 {
-                    lia.par_iter().enumerate().for_each(|(i, _v)| {
+                    x.par_extend(lia.par_iter().enumerate().map(|(i, _v)| {
                         let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
 
-                        pra.lock().unwrap().push(Scalar(eval(
+                        Scalar(eval(
                             &a,
                             // Inputs have full density in the A query
                             // because there are constraints of the
                             // form x * 0 = 0 for each input.
                             None,
-                            Some(aad.lock().unwrap().deref_mut()),
+                            Some(aad),
                             lia,
                             laa,
-                        )));
-                    });
+                        ))
+                    }));
                 } else if i == 1 {
-                    lia.par_iter().for_each(|_v| {
+                    x.par_extend(lia.par_iter().map(|_v| {
                         let b = LinearCombination::<E>::zero();
-                        prb.lock().unwrap().push(Scalar(eval(
+                        Scalar(eval(
                             &b,
-                            Some(bid.lock().unwrap().deref_mut()),
-                            Some(bad.lock().unwrap().deref_mut()),
+                            Some(bid),
+                            Some(bad),
                             lia,
                             laa,
-                        )));
-                    });
+                        ))
+                    }));
                 } else if i == 2 {
-                    lia.par_iter().for_each(|_v| {
+                    x.par_extend(lia.par_iter().map(|_v| {
                         let c = LinearCombination::<E>::zero();
-                        prc.lock().unwrap().push(Scalar(eval(
+                        Scalar(eval(
                             &c,
                             // There is no C polynomial query,
                             // though there is an (beta)A + (alpha)B + C
@@ -347,8 +344,8 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                             None,
                             lia,
                             laa,
-                        )))
-                    });
+                        ))
+                    }));
                 }
             });
 
