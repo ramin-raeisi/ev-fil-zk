@@ -318,7 +318,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 let af = scope.spawn_future(futures::future::ok::<_, ()>({
                     info!("prover.a.len(): {}", prover.a.len());
                     info!("input_assignment.len(): {}", lia.len());
-                    prover.a.par_extend1lia.par_iter().with_min_len(1).enumerate().map(|(i, _v)| {
+                    prover.a.par_extend(lia.par_iter().with_min_len(1).enumerate().map(|(i, _v)| {
                         info!("Spawned prover.a extension iteration: {}", i);
 
                         let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
