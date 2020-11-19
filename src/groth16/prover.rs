@@ -314,7 +314,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 }));
 
                 let af = scope.spawn_future(futures::future::ok::<_, ()>({
-                    prover.a.par_extend(lia.par_iter().enumerate().map(|(i, _v)| {
+                    prover.a.par_extend(lia.par_iter().with_min_len(0).enumerate().map(|(i, _v)| {
                         let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
                         let mut acc = E::Fr::zero();
 
@@ -361,7 +361,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 }));
 
                 let bf = scope.spawn_future(futures::future::ok::<_, ()>(
-                    prover.b.par_extend(lia.par_iter().map(|_v| {
+                    prover.b.par_extend(lia.par_iter().with_min_len(0).map(|_v| {
                         let b = LinearCombination::<E>::zero();
                         let mut acc = E::Fr::zero();
 
@@ -391,7 +391,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 ));
 
                 let cf = scope.spawn_future(futures::future::ok::<_, ()>(
-                    prover.c.par_extend(lia.par_iter().map(|_v| {
+                    prover.c.par_extend(lia.par_iter().with_min_len(0).map(|_v| {
                         let c = LinearCombination::<E>::zero();
                         let mut acc = E::Fr::zero();
 
