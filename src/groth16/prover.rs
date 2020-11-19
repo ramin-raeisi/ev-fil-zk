@@ -285,7 +285,6 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
         E: Engine,
         C: Circuit<E> + Send,
 {
-    info!("circuits amount: {}", circuits.len());
     let mut provers = circuits
         .into_par_iter().with_min_len(1)
         .map(|circuit| -> Result<_, SynthesisError> {
@@ -300,7 +299,6 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 let laa: &Vec<E::Fr> = &prover.aux_assignment;
 
                 let amf = scope.spawn_future(futures::future::ok::<_, ()>({
-                    info!("Spawned amf");
                     for i in 0..lia.len() {
                         let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
 
@@ -316,11 +314,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 }));
 
                 let af = scope.spawn_future(futures::future::ok::<_, ()>({
-                    info!("prover.a.len(): {}", prover.a.len());
-                    info!("input_assignment.len(): {}", lia.len());
-                    prover.a.par_extend(lia.par_iter().with_min_len(1).enumerate().map(|(i, _v)| {
-                        info!("Spawned prover.a extension iteration: {}", i);
-
+                    prover.a.par_extend(lia.par_iter().enumerate().map(|(i, _v)| {
                         let a = LinearCombination::<E>::zero() + Variable(Index::Input(i));
                         let mut acc = E::Fr::zero();
 
@@ -350,7 +344,6 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 }));
 
                 let bmf = scope.spawn_future(futures::future::ok::<_, ()>({
-                    info!("Spawned bmf");
                     for i in 0..lia.len() {
                         let b = LinearCombination::<E>::zero();
 
@@ -368,10 +361,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 }));
 
                 let bf = scope.spawn_future(futures::future::ok::<_, ()>({
-                    info!("prover.b.len(): {}", prover.b.len());
-                    info!("input_assignment.len(): {}", lia.len());
-                    prover.b.par_extend(lia.par_iter().with_min_len(1).map(|_v| {
-                        info!("Spawned prover.b extension iteration");
+                    prover.b.par_extend(lia.par_iter().map(|_v| {
                         let b = LinearCombination::<E>::zero();
                         let mut acc = E::Fr::zero();
 
@@ -401,10 +391,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
                 }));
 
                 let cf = scope.spawn_future(futures::future::ok::<_, ()>({
-                    info!("prover.c.len(): {}", prover.c.len());
-                    info!("input_assignment.len(): {}", lia.len());
-                    prover.c.par_extend(lia.par_iter().with_min_len(1).map(|_v| {
-                        info!("Spawned prover.c extension iteration");
+                    prover.c.par_extend(lia.par_iter().map(|_v| {
                         let c = LinearCombination::<E>::zero();
                         let mut acc = E::Fr::zero();
 
