@@ -448,11 +448,6 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
         );
     });
 
-    /*let mut log_d = 0;
-    while (1 << log_d) < n {
-        log_d += 1;
-    }*/
-
     info!("starting FFT phase");
     let fft_start = Instant::now();
 
@@ -495,22 +490,6 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
     info!("starting multiexp phase");
     let multiexp_start = Instant::now();
 
-    info!("h_s calculation");
-    let h_s_start = Instant::now();
-    let h_s = a_s
-        .par_iter()
-        .map(|a| {
-            Ok(multiexp(
-                params.get_h(a.len())?,
-                FullDensity,
-                a.clone(),
-                Some(&DEVICE_POOL)))
-        })
-        .collect::<Result<Vec<_>, SynthesisError>>()?;
-
-    let h_s_time = h_s_start.elapsed();
-    info!("h_s time: {:?}", h_s_time);
-
     info!("input_assigments calculation");
     let input_assignments_start = Instant::now();
 
@@ -548,23 +527,31 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
 
     let aux_assignments_time = aux_assignments_start.elapsed();
     info!("aux_assignments time: {:?}", aux_assignments_time);
-    
-    info!("l_s calculation");
-    let l_s_start = Instant::now();
 
-    let l_s = aux_assignments
+    info!("(h_s, l_s) calculation");
+    let h_s_l_s_start = Instant::now();
+
+    let h_s_l_s = a_s
         .par_iter()
-        .map(|aux_assignment| {
-            Ok(multiexp(
-                params.get_l(aux_assignment.len())?,
-                FullDensity,
-                aux_assignment.clone(),
-                Some(&DEVICE_POOL)))
-        })
-        .collect::<Result<Vec<_>, SynthesisError>>()?;
+        .zip(aux_assignments.par_iter())
+        .map(|(a, aux_assignment)| {
+            (
+                multiexp(
+                    params.get_h(a.len()).unwrap(),
+                    FullDensity,
+                    a.clone(),
+                    Some(&DEVICE_POOL)),
+                multiexp(
+                    params.get_l(aux_assignment.len()).unwrap(),
+                    FullDensity,
+                    aux_assignment.clone(),
+                    Some(&DEVICE_POOL))
+            )
+        }).collect::<Vec<_>>();
 
-    let l_s_time = l_s_start.elapsed();
-    info!("l_s time: {:?}", l_s_time);
+    let h_s_l_s_time = h_s_l_s_start.elapsed();
+    info!("(h_s, l_s) time: {:?}", h_s_l_s_time);
+
     info!("inputs calculation");
     let inputs_start = Instant::now();
 
@@ -628,9 +615,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
     let multiexp_time = multiexp_start.elapsed();
     info!("multiexp phase time: {:?}", multiexp_time);
 
-    let proofs = h_s
-        .into_par_iter()
-        .zip(l_s.into_par_iter())
+    let proofs = h_s_l_s.into_par_iter()
         .zip(inputs.into_par_iter())
         .map(|((h, l), (a_inputs, a_aux, b_g2_inputs, b_g2_aux))| {
             if vk.delta_g1.is_zero() || vk.delta_g2.is_zero() {
