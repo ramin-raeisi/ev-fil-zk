@@ -286,7 +286,7 @@ fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
         C: Circuit<E> + Send,
 {
     let mut provers = circuits
-        .into_par_iter().with_min_len(1)
+        .into_par_iter()
         .map(|circuit| -> Result<_, SynthesisError> {
             let mut prover = ProvingAssignment::new();
 
