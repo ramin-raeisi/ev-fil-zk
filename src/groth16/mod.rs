@@ -5,7 +5,6 @@
 #[cfg(test)]
 mod tests;
 
-mod ext;
 mod generator;
 mod mapped_params;
 mod params;
@@ -16,7 +15,6 @@ mod verifying_key;
 
 mod multiscalar;
 
-pub use self::ext::*;
 pub use self::generator::*;
 pub use self::mapped_params::*;
 pub use self::params::*;

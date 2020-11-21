@@ -1,5 +1,4 @@
 use super::error::{GPUError, GPUResult};
-use super::sources;
 use super::utils;
 use crate::bls::{Engine, Bls12};
 use ff::{Field, PrimeField, ScalarEngine};

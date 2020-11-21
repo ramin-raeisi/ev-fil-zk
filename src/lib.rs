@@ -155,8 +155,6 @@ use std::io;
 use std::marker::PhantomData;
 use std::ops::{Add, Sub};
 
-const BELLMAN_VERSION: &str = env!("CARGO_PKG_VERSION");
-
 /// Computations are expressed in terms of arithmetic circuits, in particular
 /// rank-1 quadratic constraint systems. The `Circuit` trait represents a
 /// circuit that can be synthesized. The `synthesize` method is called during

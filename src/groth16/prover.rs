@@ -4,14 +4,13 @@ use std::time::Instant;
 use crate::bls::Engine;
 use ff::{Field, PrimeField};
 use groupy::{CurveAffine, CurveProjective};
-use rand_core::RngCore;
 use rayon::prelude::*;
 
 use super::{ParameterSource, Proof};
 use crate::domain::{EvaluationDomain, Scalar};
 use crate::multiexp::{multiexp, DensityTracker, FullDensity};
 use crate::{
-    Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable, BELLMAN_VERSION,
+    Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
 };
 use futures::future::Future;
 use log::info;
@@ -72,8 +71,8 @@ struct ProvingAssignment<E: Engine> {
 }
 
 use std::fmt;
-use std::ops::{Deref, DerefMut};
 use rayon_futures::{ScopeFutureExt};
+use std::ops::DerefMut;
 
 impl<E: Engine> fmt::Debug for ProvingAssignment<E> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -177,34 +176,49 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         let b = b(LinearCombination::zero());
         let c = c(LinearCombination::zero());
 
-        self.a.push(Scalar(eval(
-            &a,
-            // Inputs have full density in the A query
-            // because there are constraints of the
-            // form x * 0 = 0 for each input.
-            None,
-            Some(&mut self.a_aux_density),
-            &self.input_assignment,
-            &self.aux_assignment,
-        )));
-        self.b.push(Scalar(eval(
-            &b,
-            Some(&mut self.b_input_density),
-            Some(&mut self.b_aux_density),
-            &self.input_assignment,
-            &self.aux_assignment,
-        )));
-        self.c.push(Scalar(eval(
-            &c,
-            // There is no C polynomial query,
-            // though there is an (beta)A + (alpha)B + C
-            // query for all aux variables.
-            // However, that query has full density.
-            None,
-            None,
-            &self.input_assignment,
-            &self.aux_assignment,
-        )));
+        let mut vec = vec![&mut self.a, &mut self.b, &mut self.c];
+
+        let lia: &Vec<E::Fr> = &self.input_assignment;
+        let laa: &Vec<E::Fr> = &self.aux_assignment;
+
+        let aad = Arc::new(Mutex::new(&mut self.a_aux_density));
+        let bid = Arc::new(Mutex::new(&mut self.b_input_density));
+        let bad = Arc::new(Mutex::new(&mut self.b_aux_density));
+
+        vec.par_iter_mut().enumerate().for_each(|(i, v)| {
+            if i == 0 {
+                v.push(Scalar(eval(
+                    &a,
+                    // Inputs have full density in the A query
+                    // because there are constraints of the
+                    // form x * 0 = 0 for each input.
+                    None,
+                    Some(aad.lock().unwrap().deref_mut()),
+                    lia,
+                    laa,
+                )))
+            } else if i == 1 {
+                v.push(Scalar(eval(
+                    &b,
+                    Some(bid.lock().unwrap().deref_mut()),
+                    Some(bad.lock().unwrap().deref_mut()),
+                    lia,
+                    laa,
+                )))
+            } else if i == 2 {
+                v.push(Scalar(eval(
+                    &c,
+                    // There is no C polynomial query,
+                    // though there is an (beta)A + (alpha)B + C
+                    // query for all aux variables.
+                    // However, that query has full density.
+                    None,
+                    None,
+                    lia,
+                    laa,
+                )))
+            }
+        });
     }
 
     fn push_namespace<NR, N>(&mut self, _: N)
@@ -243,43 +257,9 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     }
 }
 
-pub fn create_random_proof_batch_priority<E, C, R, P: ParameterSource<E>>(
+pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
     circuits: Vec<C>,
     params: P,
-    rng: &mut R,
-    priority: bool,
-) -> Result<Vec<Proof<E>>, SynthesisError>
-    where
-        E: Engine,
-        C: Circuit<E> + Send,
-        R: RngCore,
-{
-    let r_s = (0..circuits.len()).map(|_| E::Fr::random(rng)).collect();
-    let s_s = (0..circuits.len()).map(|_| E::Fr::random(rng)).collect();
-
-    create_proof_batch_priority::<E, C, P>(circuits, params, r_s, s_s, priority)
-}
-
-pub fn create_proof_batch_priority<E, C, P: ParameterSource<E>>(
-    circuits: Vec<C>,
-    params: P,
-    r_s: Vec<E::Fr>,
-    s_s: Vec<E::Fr>,
-    priority: bool,
-) -> Result<Vec<Proof<E>>, SynthesisError>
-    where
-        E: Engine,
-        C: Circuit<E> + Send,
-{
-    rayon::scope(|_| create_proof_batch_priority_inner(circuits, params, r_s, s_s, priority))
-}
-
-fn create_proof_batch_priority_inner<E, C, P: ParameterSource<E>>(
-    circuits: Vec<C>,
-    params: P,
-    r_s: Vec<E::Fr>,
-    s_s: Vec<E::Fr>,
-    priority: bool,
 ) -> Result<Vec<Proof<E>>, SynthesisError>
     where
         E: Engine,
