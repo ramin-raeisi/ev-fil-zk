@@ -42,7 +42,7 @@ impl<E: Engine> Circuit<E> for DummyDemo {
 pub fn test_parallel_prover() {
     use bellperson::bls::Bls12;
     use bellperson::groth16::{
-        create_random_proof, create_random_proof_in_priority, generate_random_parameters,
+        create_proof_batch, generate_random_parameters,
         prepare_verifying_key, verify_proof,
     };
     use rand::thread_rng;
@@ -76,8 +76,8 @@ pub fn test_parallel_prover() {
             let now = Instant::now();
 
             let rng = &mut thread_rng();
-            let proof_higher = create_random_proof_in_priority(c.clone(), &params, rng).unwrap();
-            assert!(verify_proof(&pvk, &proof_higher, &[]).unwrap());
+            let proof_higher = create_proof_batch(vec![c.clone()], &params).unwrap();
+            assert!(verify_proof(&pvk, &proof_higher[0], &[]).unwrap());
 
             println!(
                 "Higher proof gen finished in {}s and {}ms",
@@ -97,8 +97,8 @@ pub fn test_parallel_prover() {
         for _ in 0..10 {
             let now = Instant::now();
 
-            let proof_lower = create_random_proof(c2.clone(), &params2, rng).unwrap();
-            assert!(verify_proof(&pvk2, &proof_lower, &[]).unwrap());
+            let proof_lower = create_proof_batch(vec![c2.clone()], &params2).unwrap();
+            assert!(verify_proof(&pvk2, &proof_lower[0], &[]).unwrap());
 
             println!(
                 "Lower proof gen finished in {}s and {}ms",

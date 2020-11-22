@@ -16,7 +16,7 @@ use bellperson::{Circuit, ConstraintSystem, SynthesisError};
 
 // We're going to use the Groth16 proving system.
 use bellperson::groth16::{
-    create_random_proof, create_random_proof_batch, generate_random_parameters,
+    create_proof_batch, generate_random_parameters,
     prepare_verifying_key, verify_proof, verify_proofs_batch, Proof,
 };
 
@@ -207,9 +207,9 @@ fn test_mimc() {
             };
 
             // Create a groth16 proof with our parameters.
-            let proof = create_random_proof(c, &params, rng).unwrap();
+            let proof = create_proof_batch(vec![c], &params).unwrap();
 
-            proof.write(&mut proof_vec).unwrap();
+            proof[0].write(&mut proof_vec).unwrap();
         }
 
         total_proving += start.elapsed();
@@ -239,7 +239,7 @@ fn test_mimc() {
         };
 
         // Create a groth16 proof with our parameters.
-        let proofs = create_random_proof_batch(vec![c; SAMPLES as usize], &params, rng).unwrap();
+        let proofs = create_proof_batch(vec![c; SAMPLES as usize], &params).unwrap();
         assert_eq!(proofs.len(), 50);
     }
 

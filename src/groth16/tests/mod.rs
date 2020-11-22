@@ -10,7 +10,7 @@ use self::dummy_engine::*;
 use std::marker::PhantomData;
 
 use super::{
-    create_proof, create_proof_batch, generate_parameters, prepare_verifying_key, verify_proof,
+    create_proof_batch, generate_parameters, prepare_verifying_key, verify_proof,
 };
 use crate::{Circuit, ConstraintSystem, SynthesisError};
 
@@ -284,9 +284,6 @@ fn test_xordemo() {
 
     let _pvk = prepare_verifying_key(&params.vk);
 
-    let r = Fr::from_str("27134").unwrap();
-    let s = Fr::from_str("17146").unwrap();
-
     let proof = {
         let c = XORDemo {
             a: Some(true),
@@ -294,7 +291,7 @@ fn test_xordemo() {
             _marker: PhantomData,
         };
 
-        create_proof(c, &params, r, s).unwrap()
+        create_proof_batch(vec![c], &params).unwrap()
     };
 
     // A(x) =
@@ -310,7 +307,7 @@ fn test_xordemo() {
         expected_a.add_assign(&u_i[1]); // a_1 = 1
         expected_a.add_assign(&u_i[2]); // a_2 = 1
                                         // a_3 = 0
-        assert_eq!(proof.a, expected_a);
+        assert_eq!(proof[0].a, expected_a);
     }
 
     // B(x) =
@@ -326,7 +323,7 @@ fn test_xordemo() {
         expected_b.add_assign(&v_i[1]); // a_1 = 1
         expected_b.add_assign(&v_i[2]); // a_2 = 1
                                         // a_3 = 0
-        assert_eq!(proof.b, expected_b);
+        assert_eq!(proof[0].b, expected_b);
     }
 
     // C(x) =
@@ -361,7 +358,7 @@ fn test_xordemo() {
             expected_c.add_assign(&tmp);
         }
 
-        assert_eq!(expected_c, proof.c);
+        assert_eq!(expected_c, proof[0].c);
     }
 
     // FIXME(dignifiedquire): The dummy engine does not correctly implement accumulation of the
@@ -393,30 +390,22 @@ fn test_create_batch_single() {
 
     let _pvk = prepare_verifying_key(&params.vk);
 
-    let r1 = Fr::from_str("27134").unwrap();
-    let s1 = Fr::from_str("17146").unwrap();
-
-    let r2 = Fr::from_str("27132").unwrap();
-    let s2 = Fr::from_str("17142").unwrap();
-
     let c = XORDemo {
         a: Some(true),
         b: Some(false),
         _marker: PhantomData,
     };
-    let proof_single_1 = create_proof(c.clone(), &params, r1, s1).unwrap();
-    let proof_single_2 = create_proof(c.clone(), &params, r2, s2).unwrap();
+    let proof_single_1 = create_proof_batch(vec![c.clone()], &params).unwrap();
+    let proof_single_2 = create_proof_batch(vec![c.clone()], &params).unwrap();
 
     let proof_batch = create_proof_batch(
         vec![c.clone(), c.clone()],
         &params,
-        vec![r1, r2],
-        vec![s1, s2],
     )
     .unwrap();
 
-    assert_eq!(proof_batch[0], proof_single_1);
-    assert_eq!(proof_batch[1], proof_single_2);
+    assert_eq!(proof_batch[0], proof_single_1[0]);
+    assert_eq!(proof_batch[1], proof_single_2[0]);
 
     // FIXME(dignifiedquire): The dummy engine does not correctly implement accumulation of the
     // miller loops through mutliplication, which breaks this test.
@@ -431,7 +420,7 @@ fn test_create_batch_single() {
 #[test]
 fn test_verify_random_single() {
     use crate::bls::{Bls12, Fr, G1Projective, G2Projective};
-    use crate::groth16::{create_random_proof, generate_random_parameters, Proof};
+    use crate::groth16::{generate_random_parameters, Proof};
     use groupy::{CurveAffine, CurveProjective};
 
     let mut rng = XorShiftRng::from_seed([
@@ -458,37 +447,37 @@ fn test_verify_random_single() {
             _marker: PhantomData,
         };
 
-        let proof = create_random_proof(c.clone(), &params, &mut rng).unwrap();
+        let proof = create_proof_batch(vec![c.clone()], &params).unwrap();
 
         // real proofs
-        assert!(verify_proof(&pvk, &proof, &[Fr::one()]).unwrap());
+        assert!(verify_proof(&pvk, &proof[0], &[Fr::one()]).unwrap());
 
         // mess up the inputs
         {
-            assert!(!verify_proof(&pvk, &proof, &[Fr::random(&mut rng)]).unwrap());
+            assert!(!verify_proof(&pvk, &proof[0], &[Fr::random(&mut rng)]).unwrap());
         }
 
         // mess up the proof a little bit
         {
-            let mut fake_proof = proof.clone();
+            let mut fake_proof = proof[0].clone();
             fake_proof.a = fake_proof.a.mul(Fr::random(&mut rng)).into_affine();
             assert!(!verify_proof(&pvk, &fake_proof, &[Fr::one()]).unwrap());
         }
 
         {
-            let mut fake_proof = proof.clone();
+            let mut fake_proof = proof[0].clone();
             fake_proof.b = fake_proof.b.mul(Fr::random(&mut rng)).into_affine();
             assert!(!verify_proof(&pvk, &fake_proof, &[Fr::one()]).unwrap());
         }
 
         {
-            let mut fake_proof = proof.clone();
+            let mut fake_proof = proof[0].clone();
             fake_proof.c = fake_proof.c.mul(Fr::random(&mut rng)).into_affine();
             assert!(!verify_proof(&pvk, &fake_proof, &[Fr::one()]).unwrap());
         }
 
         {
-            let mut fake_proof = proof.clone();
+            let mut fake_proof = proof[0].clone();
             let c = fake_proof.c;
             fake_proof.c = fake_proof.a;
             fake_proof.a = c;
@@ -511,7 +500,7 @@ fn test_verify_random_single() {
 fn test_verify_random_batch() {
     use crate::bls::{Bls12, Fr, G1Projective, G2Projective};
     use crate::groth16::{
-        create_random_proof_batch, generate_random_parameters, verify_proofs_batch, Proof,
+        generate_random_parameters, verify_proofs_batch, Proof,
     };
     use groupy::{CurveAffine, CurveProjective};
 
@@ -541,7 +530,7 @@ fn test_verify_random_batch() {
         };
 
         let proof =
-            create_random_proof_batch(vec![c.clone(), c.clone(), c.clone()], &params, &mut rng)
+        create_proof_batch(vec![c.clone(), c.clone(), c.clone()], &params)
                 .unwrap();
 
         // real proofs
