@@ -176,49 +176,34 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         let b = b(LinearCombination::zero());
         let c = c(LinearCombination::zero());
 
-        let mut vec = vec![&mut self.a, &mut self.b, &mut self.c];
-
-        let lia: &Vec<E::Fr> = &self.input_assignment;
-        let laa: &Vec<E::Fr> = &self.aux_assignment;
-
-        let aad = Arc::new(Mutex::new(&mut self.a_aux_density));
-        let bid = Arc::new(Mutex::new(&mut self.b_input_density));
-        let bad = Arc::new(Mutex::new(&mut self.b_aux_density));
-
-        vec.par_iter_mut().enumerate().for_each(|(i, v)| {
-            if i == 0 {
-                v.push(Scalar(eval(
-                    &a,
-                    // Inputs have full density in the A query
-                    // because there are constraints of the
-                    // form x * 0 = 0 for each input.
-                    None,
-                    Some(aad.lock().unwrap().deref_mut()),
-                    lia,
-                    laa,
-                )))
-            } else if i == 1 {
-                v.push(Scalar(eval(
-                    &b,
-                    Some(bid.lock().unwrap().deref_mut()),
-                    Some(bad.lock().unwrap().deref_mut()),
-                    lia,
-                    laa,
-                )))
-            } else if i == 2 {
-                v.push(Scalar(eval(
-                    &c,
-                    // There is no C polynomial query,
-                    // though there is an (beta)A + (alpha)B + C
-                    // query for all aux variables.
-                    // However, that query has full density.
-                    None,
-                    None,
-                    lia,
-                    laa,
-                )))
-            }
-        });
+        self.a.push(Scalar(eval(
+            &a,
+            // Inputs have full density in the A query
+            // because there are constraints of the
+            // form x * 0 = 0 for each input.
+            None,
+            Some(&mut self.a_aux_density),
+            &self.input_assignment,
+            &self.aux_assignment,
+        )));
+        self.b.push(Scalar(eval(
+            &b,
+            Some(&mut self.b_input_density),
+            Some(&mut self.b_aux_density),
+            &self.input_assignment,
+            &self.aux_assignment,
+        )));
+        self.c.push(Scalar(eval(
+            &c,
+            // There is no C polynomial query,
+            // though there is an (beta)A + (alpha)B + C
+            // query for all aux variables.
+            // However, that query has full density.
+            None,
+            None,
+            &self.input_assignment,
+            &self.aux_assignment,
+        )));
     }
 
     fn push_namespace<NR, N>(&mut self, _: N)
