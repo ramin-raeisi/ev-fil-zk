@@ -393,7 +393,7 @@ fn test_with_bls12() {
     assert_eq!(naive, fast);
 }
 
-#[cfg(feature = "gpu")]
+/*#[cfg(feature = "gpu")]
 #[test]
 pub fn gpu_multiexp_consistency() {
     use crate::bls::Bls12;
@@ -450,7 +450,7 @@ pub fn gpu_multiexp_consistency() {
 
         bases = [bases.clone(), bases.clone()].concat();
     }
-}
+}*/
 
 #[cfg(test)]
 mod tests {

@@ -183,7 +183,7 @@ mod test_with_bls12_381 {
     use super::*;
     use crate::bls::{Bls12, Fr};
     use crate::groth16::{
-        create_random_proof, generate_random_parameters, prepare_verifying_key, verify_proof,
+        create_proof_batch, generate_random_parameters, prepare_verifying_key, verify_proof, 
         Parameters,
     };
     use crate::{Circuit, ConstraintSystem, SynthesisError};
@@ -254,33 +254,32 @@ mod test_with_bls12_381 {
             let mut c = a;
             c.mul_assign(&b);
 
-            let proof = create_random_proof(
-                MySillyCircuit {
+            let proof = create_proof_batch(
+                vec![MySillyCircuit {
                     a: Some(a),
                     b: Some(b),
-                },
+                }],
                 &params,
-                rng,
             )
             .unwrap();
 
             let mut v = vec![];
-            proof.write(&mut v).unwrap();
+            proof[0].write(&mut v).unwrap();
 
             assert_eq!(v.len(), 192);
 
             let de_proof = Proof::read(&v[..]).unwrap();
-            assert!(proof == de_proof);
+            assert!(proof[0] == de_proof);
 
             // read two proofs
-            proof.write(&mut v).unwrap();
+            proof[0].write(&mut v).unwrap();
             let de_proofs = Proof::read_many(&v[..], 2).unwrap();
             assert_eq!(de_proofs.len(), 2);
-            assert_eq!(de_proofs[0], proof);
-            assert_eq!(de_proofs[1], proof);
+            assert_eq!(de_proofs[0], proof[0]);
+            assert_eq!(de_proofs[1], proof[0]);
 
-            assert!(verify_proof(&pvk, &proof, &[c]).unwrap());
-            assert!(!verify_proof(&pvk, &proof, &[a]).unwrap());
+            assert!(verify_proof(&pvk, &proof[0], &[c]).unwrap());
+            assert!(!verify_proof(&pvk, &proof[0], &[a]).unwrap());
         }
     }
 }
