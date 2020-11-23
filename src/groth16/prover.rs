@@ -250,6 +250,10 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
         E: Engine,
         C: Circuit<E> + Send,
 {
+    
+    let r1cs_start = Instant::now();
+    info!("starting r1cs generation");
+
     let mut provers = circuits
         .into_par_iter()
         .map(|circuit| -> Result<_, SynthesisError> {
@@ -266,6 +270,9 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             Ok(prover)
         })
         .collect::<Result<Vec<_>, _>>()?;
+
+    let r1cs_time = r1cs_start.elapsed();
+    info!("r1cs generation time: {:?}", r1cs_time);    
 
     // Start fft/multiexp prover timer
     let start = Instant::now();
