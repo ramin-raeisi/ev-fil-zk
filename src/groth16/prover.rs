@@ -255,21 +255,40 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
     info!("starting r1cs generation");
 
     let mut provers = circuits
-        .into_par_iter()
+        .into_iter()
         .map(|circuit| -> Result<_, SynthesisError> {
+            let prover_start = Instant::now();
+            info!("==== new prover iteration ====");
+
             let mut prover = ProvingAssignment::new();
 
             prover.alloc_input(|| "", || Ok(E::Fr::one()))?;
 
+            let synthesize_start = Instant::now();
+            info!("circuit synthesize");
+            
             circuit.synthesize(&mut prover)?;
+
+            let synthesize_time = synthesize_start.elapsed();
+            info!("synthesize time: {:?}", synthesize_time);
+
+            let input_start = Instant::now();
+            info!("enforce input assigment");
 
             for i in 0..prover.input_assignment.len() {
                 prover.enforce(|| "", |lc| lc + Variable(Index::Input(i)), |lc| lc, |lc| lc);
             }
 
+            let input_time = input_start.elapsed();
+            info!("enforce input assigment time: {:?}", input_time);
+
+            let prover_time = prover_start.elapsed();
+            info!("prover iteration time: {:?}", prover_time);
+
             Ok(prover)
         })
         .collect::<Result<Vec<_>, _>>()?;
+
 
     let r1cs_time = r1cs_start.elapsed();
     info!("r1cs generation time: {:?}", r1cs_time);    
