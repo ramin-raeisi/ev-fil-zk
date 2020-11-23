@@ -272,15 +272,9 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             let synthesize_time = synthesize_start.elapsed();
             info!("synthesize time: {:?}", synthesize_time);
 
-            let input_start = Instant::now();
-            info!("enforce input assigment");
-
             for i in 0..prover.input_assignment.len() {
                 prover.enforce(|| "", |lc| lc + Variable(Index::Input(i)), |lc| lc, |lc| lc);
             }
-
-            let input_time = input_start.elapsed();
-            info!("enforce input assigment time: {:?}", input_time);
 
             let prover_time = prover_start.elapsed();
             info!("prover iteration time: {:?}", prover_time);
