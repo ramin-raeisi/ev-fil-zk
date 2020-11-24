@@ -62,7 +62,7 @@ lazy_static::lazy_static! {
 const DEFAULT_CORE_COUNT: usize = 2560;
 
 pub fn best_work_size(d: &opencl::Device) -> usize {
-    get_core_count(d) * 4
+    get_core_count(d) * 6
 }
 
 pub fn get_core_count(d: &opencl::Device) -> usize {
