@@ -346,7 +346,7 @@ pub enum SynthesisError {
 
 /// Represents a constraint system which can have new variables
 /// allocated and constrains between them formed.
-pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
+pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send + Sync {
     /// Represents the type of the "root" of this constraint system
     /// so that nested namespaces can minimize indirection.
     type Root: ConstraintSystem<E>;
