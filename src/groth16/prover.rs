@@ -251,9 +251,6 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
         C: Circuit<E> + Send,
 {
     
-    let r1cs_start = Instant::now();
-    info!("starting r1cs generation");
-
     let mut provers = circuits
         .into_par_iter()
         .map(|circuit| -> Result<_, SynthesisError> {
@@ -263,28 +260,18 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
 
             prover.alloc_input(|| "", || Ok(E::Fr::one()))?;
 
-            let synthesize_start = Instant::now();
-            info!("circuit synthesize");
-
             circuit.synthesize(&mut prover)?;
-
-            let synthesize_time = synthesize_start.elapsed();
-            info!("synthesize time: {:?}", synthesize_time);
 
             for i in 0..prover.input_assignment.len() {
                 prover.enforce(|| "", |lc| lc + Variable(Index::Input(i)), |lc| lc, |lc| lc);
             }
 
             let prover_time = prover_start.elapsed();
-            info!("prover iteration time: {:?}", prover_time);
 
             Ok(prover)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-
-    let r1cs_time = r1cs_start.elapsed();
-    info!("r1cs generation time: {:?}", r1cs_time);    
 
     // Start fft/multiexp prover timer
     let start = Instant::now();
@@ -345,9 +332,6 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
     info!("starting multiexp phase");
     let multiexp_start = Instant::now();
 
-    info!("input_assigments calculation");
-    let input_assignments_start = Instant::now();
-
     let input_assignments = provers
         .par_iter_mut()
         .map(|prover| {
@@ -361,12 +345,6 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
         })
         .collect::<Vec<_>>();
 
-    let input_assignments_time = input_assignments_start.elapsed();
-    info!("input_assignments time: {:?}", input_assignments_time);
-
-    info!("aux_assignments calculation");
-    let aux_assignments_start = Instant::now();
-
     let aux_assignments = provers
         .par_iter_mut()
         .map(|prover| {
@@ -379,12 +357,6 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             )
         })
         .collect::<Vec<_>>();
-
-    let aux_assignments_time = aux_assignments_start.elapsed();
-    info!("aux_assignments time: {:?}", aux_assignments_time);
-
-    info!("(h_s, l_s) calculation");
-    let h_s_l_s_start = Instant::now();
 
     let h_s_l_s = a_s
         .par_iter()
@@ -403,12 +375,6 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
                     Some(&DEVICE_POOL))
             )
         }).collect::<Vec<_>>();
-
-    let h_s_l_s_time = h_s_l_s_start.elapsed();
-    info!("(h_s, l_s) time: {:?}", h_s_l_s_time);
-
-    info!("inputs calculation");
-    let inputs_start = Instant::now();
 
     let inputs = provers
         .par_iter()
@@ -463,9 +429,6 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             ))
         })
         .collect::<Result<Vec<_>, SynthesisError>>()?;
-
-    let inputs_time = inputs_start.elapsed();
-    info!("inputs time: {:?}", inputs_time);
 
     let multiexp_time = multiexp_start.elapsed();
     info!("multiexp phase time: {:?}", multiexp_time);
