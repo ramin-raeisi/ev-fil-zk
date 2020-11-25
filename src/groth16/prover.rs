@@ -255,10 +255,9 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
     info!("starting r1cs generation");
 
     let mut provers = circuits
-        .into_iter()
+        .into_par_iter()
         .map(|circuit| -> Result<_, SynthesisError> {
             let prover_start = Instant::now();
-            info!("==== new prover iteration ====");
 
             let mut prover = ProvingAssignment::new();
 
@@ -266,7 +265,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
 
             let synthesize_start = Instant::now();
             info!("circuit synthesize");
-            
+
             circuit.synthesize(&mut prover)?;
 
             let synthesize_time = synthesize_start.elapsed();
