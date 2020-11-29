@@ -116,6 +116,7 @@ impl<E> MultiexpKernel<E>
         let exp_bits = exp_size::<E>() * 8;
         let max_n = calc_chunk_size::<E>(program.device().memory(), work_size);
         let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
+        info!("chunk_size_of: max_n = {}, best_n = {}.", max_n, best_n);
         std::cmp::min(max_n, best_n)
     }
 
