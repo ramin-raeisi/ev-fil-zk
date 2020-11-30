@@ -72,7 +72,7 @@ fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usiz
         .ceil() as usize
 }
 
-fn calc_chunk_size<E>(mem: u64, work_size: usize) -> usize
+fn calc_chunk_size<E>(mem: u64, work_size: usize, overG2: bool) -> usize
     where
         E: Engine,
 {
@@ -88,7 +88,10 @@ fn calc_chunk_size<E>(mem: u64, work_size: usize) -> usize
         .max(1f64)
         .min(0f64);
 
-    let aff_size = std::mem::size_of::<E::G1Affine>() + std::mem::size_of::<E::G2Affine>();
+    //let aff_size = std::cmp::max(std::mem::size_of::<E::G1Affine>(), std::mem::size_of::<E::G2Affine>());
+    let aff_size = 
+        if overG2 { std::mem::size_of::<E::G2Affine>() } 
+        else  { std::mem::size_of::<E::G1Affine>() };
     let exp_size = exp_size::<E>();
     let proj_size = std::mem::size_of::<E::G1>() + std::mem::size_of::<E::G2>();
     ((((mem as f64) * (1f64 - memory_padding)) as usize)
@@ -112,9 +115,9 @@ impl<E> MultiexpKernel<E>
         }
     }
 
-    fn chunk_size_of(program: &opencl::Program, work_size: usize) -> usize {
+    fn chunk_size_of(program: &opencl::Program, work_size: usize, overG2: bool) -> usize {
         let exp_bits = exp_size::<E>() * 8;
-        let max_n = calc_chunk_size::<E>(program.device().memory(), work_size);
+        let max_n = calc_chunk_size::<E>(program.device().memory(), work_size, overG2);
         let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
         info!("chunk_size_of: max_n = {}, best_n = {}.", max_n, best_n);
         std::cmp::min(max_n, best_n)
@@ -265,11 +268,22 @@ impl<E> MultiexpKernel<E>
 
         info!("Running multiexp with n = {}", n);
 
+        let overG2  = if TypeId::of::<G>() == TypeId::of::<E::G1Affine>() {
+            info!("Type of multiexp: G1");
+            false
+        } else if TypeId::of::<G>() == TypeId::of::<E::G2Affine>() {
+            info!("Type of multiexp: G2");
+            true
+        } else {
+            return Err(GPUError::Simple("Only E::G1 and E::G2 are supported!"));
+        };
+
         for p in scheduler::DEVICE_POOL.devices.iter() {
             let data = p.lock().unwrap();
             let cur: usize = MultiexpKernel::<E>::chunk_size_of(&data,
                                                                 utils::best_work_size(&data
-                                                                    .device()));
+                                                                    .device()),
+                                                                overG2);
             if cur < chunk_size {
                 chunk_size = cur;
             }
