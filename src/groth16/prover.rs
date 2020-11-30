@@ -250,7 +250,6 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
         E: Engine,
         C: Circuit<E> + Send,
 {
-    
     let mut provers = circuits
         .into_par_iter()
         .map(|circuit| -> Result<_, SynthesisError> {

@@ -70,9 +70,9 @@ impl<E: Engine> Parameters<E> {
             writer.write_all(g.into_uncompressed().as_ref())?;
         }
 
-        writer.write_u32::<BigEndian>(self.b_g1.len() as u32)?;	
-        for g in &self.b_g1[..] {	
-            writer.write_all(g.into_uncompressed().as_ref())?;	
+        writer.write_u32::<BigEndian>(self.b_g1.len() as u32)?;
+        for g in &self.b_g1[..] {
+            writer.write_all(g.into_uncompressed().as_ref())?;
         }
 
         writer.write_u32::<BigEndian>(self.b_g2.len() as u32)?;
@@ -112,7 +112,7 @@ impl<E: Engine> Parameters<E> {
                            offset: &mut usize,
                            param: &mut Vec<Range<usize>>,
                            range_len: usize|
-         -> Result<(), std::io::Error> {
+                           -> Result<(), std::io::Error> {
             let len = read_length(&params, &mut *offset)?;
             for _ in 0..len {
                 (*param).push(Range {
@@ -180,17 +180,17 @@ impl<E: Engine> Parameters<E> {
             } else {
                 repr.into_affine_unchecked()
             }
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-            .and_then(|e| {
-                if e.is_zero() {
-                    Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "point at infinity",
-                    ))
-                } else {
-                    Ok(e)
-                }
-            })
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+                .and_then(|e| {
+                    if e.is_zero() {
+                        Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "point at infinity",
+                        ))
+                    } else {
+                        Ok(e)
+                    }
+                })
         };
 
         let read_g2 = |mmap: &Mmap, offset: &mut usize| -> io::Result<E::G2Affine> {
@@ -208,17 +208,17 @@ impl<E: Engine> Parameters<E> {
             } else {
                 repr.into_affine_unchecked()
             }
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-            .and_then(|e| {
-                if e.is_zero() {
-                    Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "point at infinity",
-                    ))
-                } else {
-                    Ok(e)
-                }
-            })
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+                .and_then(|e| {
+                    if e.is_zero() {
+                        Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "point at infinity",
+                        ))
+                    } else {
+                        Ok(e)
+                    }
+                })
         };
 
         let read_length = |mmap: &Mmap, offset: &mut usize| -> Result<usize, std::io::Error> {
@@ -234,7 +234,7 @@ impl<E: Engine> Parameters<E> {
         let get_g1s = |mmap: &Mmap,
                        offset: &mut usize,
                        param: &mut Vec<E::G1Affine>|
-         -> Result<(), std::io::Error> {
+                       -> Result<(), std::io::Error> {
             let len = read_length(&mmap, &mut *offset)?;
             for _ in 0..len {
                 (*param).push(read_g1(&mmap, &mut *offset)?);
@@ -246,7 +246,7 @@ impl<E: Engine> Parameters<E> {
         let get_g2s = |mmap: &Mmap,
                        offset: &mut usize,
                        param: &mut Vec<E::G2Affine>|
-         -> Result<(), std::io::Error> {
+                       -> Result<(), std::io::Error> {
             let len = read_length(&mmap, &mut *offset)?;
             for _ in 0..len {
                 (*param).push(read_g2(&mmap, &mut *offset)?);
@@ -290,17 +290,17 @@ impl<E: Engine> Parameters<E> {
             } else {
                 repr.into_affine_unchecked()
             }
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-            .and_then(|e| {
-                if e.is_zero() {
-                    Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "point at infinity",
-                    ))
-                } else {
-                    Ok(e)
-                }
-            })
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+                .and_then(|e| {
+                    if e.is_zero() {
+                        Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "point at infinity",
+                        ))
+                    } else {
+                        Ok(e)
+                    }
+                })
         };
 
         let read_g2 = |reader: &mut R| -> io::Result<E::G2Affine> {
@@ -312,17 +312,17 @@ impl<E: Engine> Parameters<E> {
             } else {
                 repr.into_affine_unchecked()
             }
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-            .and_then(|e| {
-                if e.is_zero() {
-                    Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "point at infinity",
-                    ))
-                } else {
-                    Ok(e)
-                }
-            })
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+                .and_then(|e| {
+                    if e.is_zero() {
+                        Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            "point at infinity",
+                        ))
+                    } else {
+                        Ok(e)
+                    }
+                })
         };
 
         let vk = VerifyingKey::<E>::read(&mut reader)?;
@@ -354,11 +354,11 @@ impl<E: Engine> Parameters<E> {
             }
         }
 
-        {	
-            let len = reader.read_u32::<BigEndian>()? as usize;	
-            for _ in 0..len {	
-                b_g1.push(read_g1(&mut reader)?);	
-            }	
+        {
+            let len = reader.read_u32::<BigEndian>()? as usize;
+            for _ in 0..len {
+                b_g1.push(read_g1(&mut reader)?);
+            }
         }
 
         {
