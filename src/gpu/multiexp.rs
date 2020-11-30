@@ -124,7 +124,8 @@ impl<E> MultiexpKernel<E>
         let max_n = calc_chunk_size::<E>(program.device().memory(), work_size, overG2);
         let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
         info!("chunk_size_of: max_n = {}, best_n = {}.", max_n, best_n);
-        std::cmp::min(max_n, best_n)
+        //std::cmp::min(max_n, best_n)
+        max_n
     }
 
     fn multiexp_on<G>(
@@ -273,10 +274,8 @@ impl<E> MultiexpKernel<E>
         info!("Running multiexp with n = {}", n);
 
         let overG2  = if TypeId::of::<G>() == TypeId::of::<E::G1Affine>() {
-            info!("Type of multiexp: G1");
             false
         } else if TypeId::of::<G>() == TypeId::of::<E::G2Affine>() {
-            info!("Type of multiexp: G2");
             true
         } else {
             return Err(GPUError::Simple("Only E::G1 and E::G2 are supported!"));
