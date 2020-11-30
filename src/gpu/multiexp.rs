@@ -98,7 +98,7 @@ fn calc_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
 
     ((((mem as f64) * (1f64 - memory_padding)) as usize)
         - (work_size * ((1 << MAX_WINDOW_SIZE) + 1) * proj_size))
-        / (aff_size + exp_size)
+        / (2 * (aff_size + exp_size))
 }
 
 fn exp_size<E: Engine>() -> usize {
