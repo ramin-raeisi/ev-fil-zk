@@ -93,7 +93,11 @@ fn calc_chunk_size<E>(mem: u64, work_size: usize, overG2: bool) -> usize
         if overG2 { std::mem::size_of::<E::G2Affine>() } 
         else  { std::mem::size_of::<E::G1Affine>() };
     let exp_size = exp_size::<E>();
-    let proj_size = std::mem::size_of::<E::G1>() + std::mem::size_of::<E::G2>();
+    //let proj_size = std::mem::size_of::<E::G1>() + std::mem::size_of::<E::G2>();
+    let proj_size = 
+        if overG2 { std::mem::size_of::<E::G2>() } 
+        else  { std::mem::size_of::<E::G1>() };
+
     ((((mem as f64) * (1f64 - memory_padding)) as usize)
         - (work_size * ((1 << MAX_WINDOW_SIZE) + 1) * proj_size))
         / (aff_size + exp_size)
