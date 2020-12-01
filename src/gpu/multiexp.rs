@@ -1,6 +1,6 @@
 use super::error::{GPUError, GPUResult};
 use super::utils;
-use crate::bls::{Engine, Bls12, PairingCurveAffine};
+use crate::bls::{Engine, Bls12};
 use ff::{Field, PrimeField, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
 use log::{error, info};
@@ -67,9 +67,19 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
 }
 
 fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usize) -> usize {
+    let chunk_size_multiplier = std::env::var("FIL_ZK_CHUNK_SIZE_MULTIPLIER")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FIL_ZK_CHUNK_SIZE_MULTIPLIER! Defaulting to {}", CHUNK_SIZE_MULTIPLIER);
+                Ok(CHUNK_SIZE_MULTIPLIER)
+            }
+        })
+        .unwrap_or(CHUNK_SIZE_MULTIPLIER);
+
     // Best chunk-size (N) can also be calculated using the same logic as calc_window_size:
     // n = e^window_size * window_size * work_size / exp_bits
-    (((max_window_size as f64).exp() as f64) * (max_window_size as f64) * (work_size as f64) * (CHUNK_SIZE_MULTIPLIER as f64)
+    (((max_window_size as f64).exp() as f64) * (max_window_size as f64) * (work_size as f64) * (chunk_size_multiplier as f64)
         / (exp_bits as f64))
         .ceil() as usize
 }

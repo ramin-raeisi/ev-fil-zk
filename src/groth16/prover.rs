@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::time::Instant;
 
 use crate::bls::Engine;
@@ -71,8 +71,6 @@ struct ProvingAssignment<E: Engine> {
 }
 
 use std::fmt;
-use rayon_futures::{ScopeFutureExt};
-use std::ops::DerefMut;
 
 impl<E: Engine> fmt::Debug for ProvingAssignment<E> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -250,11 +248,11 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
         E: Engine,
         C: Circuit<E> + Send,
 {
+    let prover_start = Instant::now();
+
     let mut provers = circuits
         .into_par_iter()
         .map(|circuit| -> Result<_, SynthesisError> {
-            let prover_start = Instant::now();
-
             let mut prover = ProvingAssignment::new();
 
             prover.alloc_input(|| "", || Ok(E::Fr::one()))?;
@@ -265,12 +263,12 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
                 prover.enforce(|| "", |lc| lc + Variable(Index::Input(i)), |lc| lc, |lc| lc);
             }
 
-            let prover_time = prover_start.elapsed();
-
             Ok(prover)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    let prover_time = prover_start.elapsed();
+    info!("Circuit conversion phase time: {:?}", prover_time);
 
     // Start fft/multiexp prover timer
     let start = Instant::now();

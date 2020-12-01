@@ -127,7 +127,7 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
     }
 
     pub fn distribute_powers(&mut self, g: E::Fr, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
-        if let Some(ref devices) = devices {
+        if let Some(ref _devices) = devices {
             gpu_distribute_powers(&mut self.coeffs, &g, self.exp)?;
         } else {
             let chunk_size = if self.coeffs.len() < current_num_threads() {
@@ -193,7 +193,7 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
     /// Perform O(n) multiplication of two polynomials in the domain.
     pub fn mul_assign(&mut self, other: &EvaluationDomain<E, Scalar<E>>, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
         assert_eq!(self.coeffs.len(), other.coeffs.len());
-        if let Some(ref devices) = devices {
+        if let Some(ref _devices) = devices {
             let n = self.coeffs.len();
             gpu_mul(&mut self.coeffs, &other.coeffs, n)?;
         } else {
@@ -220,7 +220,7 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
         let len = self.coeffs.len();
         assert_eq!(len, other.coeffs.len());
 
-        if let Some(ref devices) = devices {
+        if let Some(ref _devices) = devices {
             gpu_sub(&mut self.coeffs, &other.coeffs, len)?;
         } else {
             let chunk_size = if len < current_num_threads() {
@@ -345,7 +345,7 @@ fn best_fft<E: Engine, T: Group<E>>(
     }
 
     if enable_gpu_fft {
-        if let Some(ref devices) = devices {
+        if let Some(ref _devices) = devices {
             match gpu_fft(a, omega, log_n) {
                 Ok(_) => {
                     return Ok(());

@@ -298,7 +298,7 @@ pub fn multiexp<Q, D, G, S>(
             G::Engine: crate::bls::Engine,
             S: SourceBuilder<G>,
 {
-    if let Some(ref devices) = devices {
+    if let Some(ref _devices) = devices {
         let mut exps = vec![exponents[0]; exponents.len()];
         let mut n = 0;
         for (&e, d) in exponents.iter().zip(density_map.as_ref().iter()) {

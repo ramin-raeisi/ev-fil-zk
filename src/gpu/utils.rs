@@ -1,4 +1,4 @@
-use log::{info, warn};
+use log::{info, warn, error};
 use rust_gpu_tools::*;
 use std::collections::HashMap;
 use std::env;
@@ -43,12 +43,12 @@ lazy_static::lazy_static! {
             ("GeForce GTX 1650".to_string(), 896),
         ].into_iter().collect();
 
-        match env::var("BELLMAN_CUSTOM_GPU").and_then(|var| {
+        match env::var("FIL_ZK_CUSTOM_GPU").and_then(|var| {
             for card in var.split(",") {
                 let splitted = card.split(":").collect::<Vec<_>>();
-                if splitted.len() != 2 { panic!("Invalid BELLMAN_CUSTOM_GPU!"); }
+                if splitted.len() != 2 { panic!("Invalid FIL_ZK_CUSTOM_GPU!"); }
                 let name = splitted[0].trim().to_string();
-                let cores : usize = splitted[1].trim().parse().expect("Invalid BELLMAN_CUSTOM_GPU!");
+                let cores : usize = splitted[1].trim().parse().expect("Invalid FIL_ZK_CUSTOM_GPU!");
                 info!("Adding \"{}\" to GPU list with {} CUDA cores.", name, cores);
                 core_counts.insert(name, cores);
             }
@@ -60,10 +60,19 @@ lazy_static::lazy_static! {
 }
 
 const DEFAULT_CORE_COUNT: usize = 2560;
+const WORK_SIZE_MULTIPLIER: usize = 2;
 
-const work_size_multiplier: usize = 2;
+pub fn best_work_size(d: &opencl::Device, over_g2: bool) -> usize {
+    let work_size_multiplier = std::env::var("FIL_ZK_WORK_SIZE_MULTIPLIER")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FIL_ZK_WORK_SIZE_MULTIPLIER! Defaulting to {}", WORK_SIZE_MULTIPLIER);
+                Ok(WORK_SIZE_MULTIPLIER)
+            }
+        })
+        .unwrap_or(WORK_SIZE_MULTIPLIER);
 
-pub fn best_work_size(d: &opencl::Device, over_g2 : bool) -> usize {
     // points from G2 have 2x size
     if over_g2 {
         return get_core_count(d) * work_size_multiplier;
