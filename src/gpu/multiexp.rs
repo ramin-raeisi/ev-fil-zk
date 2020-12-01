@@ -17,6 +17,8 @@ const LOCAL_WORK_SIZE: usize = 256;
 const MEMORY_PADDING: f64 = 0.2f64;
 // Let 20% of GPU memory be free
 const CPU_UTILIZATION: f64 = 0.875;
+// Increase GPU memory usage via inner loop, 1 for default value
+const CHUNK_SIZE_MULTIPLIER: usize = 2;
 
 pub fn get_cpu_utilization() -> f64 {
     std::env::var("FIL_ZK_CPU_UTILIZATION")
@@ -67,7 +69,7 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
 fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usize) -> usize {
     // Best chunk-size (N) can also be calculated using the same logic as calc_window_size:
     // n = e^window_size * window_size * work_size / exp_bits
-    (((max_window_size as f64).exp() as f64) * (max_window_size as f64) * (work_size as f64)
+    (((max_window_size as f64).exp() as f64) * (max_window_size as f64) * (work_size as f64) * (CHUNK_SIZE_MULTIPLIER as f64)
         / (exp_bits as f64))
         .ceil() as usize
 }
@@ -269,6 +271,7 @@ impl<E> MultiexpKernel<E>
         let mut chunk_size: usize = std::usize::MAX;
 
         info!("Running multiexp with n = {}", n);
+        info!("Affine size: G2 = {}, G1 = {}. Projective size: G2 = {}, G1 = {}", std::mem::size_of::<E::G2Affine>(), std::mem::size_of::<E::G1Affine>(), std::mem::size_of::<E::G2>(), std::mem::size_of::<E::G1>());
 
         let over_g2 = if TypeId::of::<G>() == TypeId::of::<E::G1Affine>() {
             false

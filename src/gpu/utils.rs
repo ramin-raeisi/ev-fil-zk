@@ -64,6 +64,7 @@ const DEFAULT_CORE_COUNT: usize = 2560;
 const work_size_multiplier: usize = 2;
 
 pub fn best_work_size(d: &opencl::Device, over_g2 : bool) -> usize {
+    // points from G2 have 2x size
     if over_g2 {
         return get_core_count(d) * work_size_multiplier;
     }
