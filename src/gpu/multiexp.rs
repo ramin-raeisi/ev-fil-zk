@@ -271,7 +271,7 @@ impl<E> MultiexpKernel<E>
         let mut chunk_size: usize = std::usize::MAX;
 
         info!("Running multiexp with n = {}", n);
-        info!("Affine size: G2 = {}, G1 = {}. Projective size: G2 = {}, G1 = {}", std::mem::size_of::<E::G2Affine>(), std::mem::size_of::<E::G1Affine>(), std::mem::size_of::<E::G2>(), std::mem::size_of::<E::G1>());
+        info!("Affine size: G2 = {}, G1 = {}. Projective size: G2 = {}, G1 = {}. Exp size: {}", std::mem::size_of::<E::G2Affine>(), std::mem::size_of::<E::G1Affine>(), std::mem::size_of::<E::G2>(), std::mem::size_of::<E::G1>(), exp_size::<E>());
 
         let over_g2 = if TypeId::of::<G>() == TypeId::of::<E::G1Affine>() {
             false
