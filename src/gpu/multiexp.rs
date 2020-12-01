@@ -282,7 +282,7 @@ impl<E> MultiexpKernel<E>
             let data = p.lock().unwrap();
             let cur: usize = MultiexpKernel::<E>::chunk_size_of(&data,
                                                                 utils::best_work_size(&data
-                                                                    .device()),
+                                                                    .device(), over_g2),
                                                                 over_g2);
             if cur < chunk_size {
                 chunk_size = cur;
@@ -300,7 +300,7 @@ impl<E> MultiexpKernel<E>
                         &bases,
                         &exps,
                         bases.len(),
-                        utils::best_work_size(&prog.device()),
+                        utils::best_work_size(&prog.device(), over_g2),
                     )
                 })
             })
