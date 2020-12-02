@@ -73,11 +73,12 @@ pub fn best_work_size(d: &opencl::Device, over_g2: bool) -> usize {
         })
         .unwrap_or(WORK_SIZE_MULTIPLIER);
 
-    // points from G2 have 2x size
+    // points from G2 have bigger size
     if over_g2 {
         return get_core_count(d) * work_size_multiplier;
     }
-    get_core_count(d) * work_size_multiplier * 2
+    // (g2_size + exp_size) / (g1_size + exp_size) = 1.75
+    get_core_count(d) * work_size_multiplier * 1.75f64 as usize
 }
 
 pub fn get_core_count(d: &opencl::Device) -> usize {
