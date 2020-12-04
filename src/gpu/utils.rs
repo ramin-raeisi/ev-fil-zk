@@ -78,7 +78,9 @@ pub fn best_work_size(d: &opencl::Device, over_g2: bool) -> usize {
         return get_core_count(d) * work_size_multiplier;
     }
     // (g2_size + exp_size) / (g1_size + exp_size) = 1.75
-    ((get_core_count(d) as f64) * (work_size_multiplier as f64) * 1.85f64) as usize
+    // ((get_core_count(d) as f64) * (work_size_multiplier as f64) * 1.85f64) as usize
+
+    get_core_count(d) * work_size_multiplier * 2
 }
 
 pub fn get_core_count(d: &opencl::Device) -> usize {
