@@ -99,16 +99,3 @@ pub fn get_core_count(d: &opencl::Device) -> usize {
         }
     }
 }
-
-pub fn dump_device_list() {
-    for d in opencl::Device::all().unwrap() {
-        info!("Device: {:?}", d);
-    }
-}
-
-#[cfg(feature = "gpu")]
-#[test]
-pub fn test_list_devices() {
-    let _ = env_logger::try_init();
-    dump_device_list();
-}

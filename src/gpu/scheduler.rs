@@ -1,14 +1,18 @@
-use super::*;
-use log::info;
-use crate::bls::Bls12;
-use rust_gpu_tools::opencl as cl;
-use lazy_static::*;
-use std::sync::{Mutex, atomic::AtomicUsize, atomic::Ordering::Relaxed};
+use std::sync::{atomic::AtomicUsize, atomic::Ordering::Relaxed, Mutex};
+
 use futures::{Future, lazy};
-use crate::SynthesisError;
-use rayon::iter::{ParallelIterator, IntoParallelRefIterator};
+use lazy_static::*;
+use log::info;
+use rayon::iter::ParallelIterator;
+use rayon::prelude::*;
 use rayon_core::scope;
 use rayon_futures::ScopeFutureExt;
+use rust_gpu_tools::opencl as cl;
+
+use crate::bls::Bls12;
+use crate::SynthesisError;
+
+use super::*;
 
 pub struct DevicePool {
     pub devices: Vec<Mutex<cl::Program>>
@@ -17,8 +21,8 @@ pub struct DevicePool {
 impl DevicePool {
     pub fn new() -> Self {
         Self {
-            devices: cl::Device::all().unwrap().par_iter().map(|d| {
-                info!("Compiling kernels on device: {} (Bus-id: {})", d.name(), d.bus_id());
+            devices: cl::Device::all().into_par_iter().map(|d| {
+                info!("Compiling kernels on device: {} (Bus-id: {})", d.name(), d.bus_id().unwrap());
                 let src = sources::kernel::<Bls12>(d.brand() == cl::Brand::Nvidia);
                 let program = cl::Program::from_opencl(d.clone(), &src).unwrap();
                 Mutex::<cl::Program>::new(program)

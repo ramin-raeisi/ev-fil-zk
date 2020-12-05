@@ -127,7 +127,7 @@ impl<E> FFTKernel<E>
                     "Running FFT of {} elements on {}(bus_id: {})...",
                     n,
                     program.device().name(),
-                    program.device().bus_id()
+                    program.device().bus_id().unwrap()
                 );
                 let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
                 let mut dst_buffer = program.create_buffer::<E::Fr>(n)?;
@@ -178,7 +178,7 @@ impl<E> FFTKernel<E>
                     "Running inplace FFT of {} elements on {}(bus_id: {})...",
                     n,
                     program.device().name(),
-                    program.device().bus_id()
+                    program.device().bus_id().unwrap()
                 );
                 let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
 
@@ -215,7 +215,7 @@ impl<E> FFTKernel<E>
                     "Running powers distribution of {} elements on {}(bus_id: {})...",
                     n,
                     program.device().name(),
-                    program.device().bus_id()
+                    program.device().bus_id().unwrap()
                 );
 
                 let mut src_buffer = program.create_buffer::<E::Fr>(n as usize)?;
@@ -255,14 +255,14 @@ impl<E> FFTKernel<E>
                         "Running sub of {} elements on {} (bus_id: {})...",
                         aelems.len(),
                         program.device().name(),
-                        program.device().bus_id()
+                        program.device().bus_id().unwrap()
                     );
                 } else {
                     info!(
                         "Running mul of {} elements on {} (bus_id: {})...",
                         aelems.len(),
                         program.device().name(),
-                        program.device().bus_id()
+                        program.device().bus_id().unwrap()
                     );
                 }
 

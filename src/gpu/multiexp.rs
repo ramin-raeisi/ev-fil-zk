@@ -152,7 +152,7 @@ impl<E> MultiexpKernel<E>
             "Running Multiexp of {} elements on {}(bus_id: {})...",
             n,
             program.device().name(),
-            program.device().bus_id()
+            program.device().bus_id().unwrap()
         );
 
         let exp_bits = exp_size::<E>() * 8;
