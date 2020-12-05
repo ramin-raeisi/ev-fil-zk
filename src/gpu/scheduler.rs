@@ -17,7 +17,7 @@ pub struct DevicePool {
 impl DevicePool {
     pub fn new() -> Self {
         Self {
-            devices: cl::Device::all().unwrap().iter().map(|d| {
+            devices: cl::Device::all().unwrap().par_iter().map(|d| {
                 info!("Compiling kernels on device: {} (Bus-id: {})", d.name(), d.bus_id());
                 let src = sources::kernel::<Bls12>(d.brand() == cl::Brand::Nvidia);
                 let program = cl::Program::from_opencl(d.clone(), &src).unwrap();
