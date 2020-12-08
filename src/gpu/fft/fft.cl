@@ -107,6 +107,71 @@ inplace_fft(__global FIELD *a,      // Source buffer
   a[k + j] = FIELD_add(a[k + j], t);
 }
 
+/*
+ * Communicate twice FFT algorithm, which does not use global memory
+ * 1
+ */
+__kernel void
+communicate_twice_fft(__global FIELD *a,      // Source buffer
+            __global FIELD *omegas, // [omega, omega^2, omega^4, ...]
+            uint lgn,
+{
+  uint gid = get_global_id(0);
+  uint gsize = get_global_size(0);
+  uint n = 1 << lgn;
+  uint lid = 0;
+
+  __local FIELD u = opencl::LocalBuffer::<E::Fr>::new(1 << lgn);
+  for (lgm = 0; lgm < (lgn - 1); lgm++){
+    uint m = 1 << lgm;
+    uint shift = gsize >> lgm;
+    if (gid < (lid + (shift >> 1))){
+      for (i = 0; i < shift; i ++){
+        if (lgm == 0) {
+          uint j = (lid + i) & (m - 1);
+          uint k = 2 * m * ((lid + i) >> lgm);
+          FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
+          FIELD t = FIELD_mul(a[k + j + m], w);
+          u[k + j] = FIELD_add(a[k + j], t);
+        }
+        uint j = (lid + i) & (m - 1);
+        uint k = 2 * m * ((lid + i) >> lgm);
+        FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
+        FIELD t = FIELD_mul(u[k + j + m], w);
+        u[k + j] = FIELD_add(u[k + j], t);
+      }
+    }
+    else {
+      for (i = 0; i < shift; i++){
+        f (lgm == 0) {
+          uint j = (lid+i) & (m - 1);
+          uint k = 2 * m * ((lid+i) >> lgm);
+          FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
+          FIELD t = FIELD_mul(a[k + j + m], w);
+          u[k + j + m] = FIELD_sub(a[k + j], t);
+          lid += (shift >> 1); 
+        }
+        uint j = (lid+i) & (m - 1);
+        uint k = 2 * m * ((lid+i) >> lgm);
+        FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
+        FIELD t = FIELD_mul(u[k + j + m], w);
+        u[k + j + m] = FIELD_sub(u[k + j], t);
+        lid += (shift >> 1); 
+      }
+    }
+  }
+  uint lgm = lgn - 1;
+  uint m = n >> 1;
+  uint j = gid & (m - 1);
+  uint k = 2 * m * (gid >> lgm);
+  FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
+  FIELD t = FIELD_mul(u[k + j + m], w);
+  FIELD tmp = u[k + j];
+  tmp = FIELD_sub(tmp, t);
+  a[k + j + m] = tmp;
+  a[k + j] = FIELD_add(u[k + j], t);
+}
+
 /// Distribute powers
 /// E.g.
 /// [elements[0]*g^0, elements[1]*g^1, ..., elements[n]*g^n]

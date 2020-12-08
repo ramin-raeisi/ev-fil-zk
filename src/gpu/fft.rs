@@ -203,6 +203,44 @@ impl<E> FFTKernel<E>
         Ok(())
     }
 
+    /// Performs communicate twice FFT on `a`
+    /// * `omega` - Special value `omega` is used for FFT over finite-fields
+    /// * `lgn` - Specifies log2 of number of elements
+    pub fn communicate_twice_fft(a: &mut [E::Fr], omega: &E::Fr, log_n: u32) -> GPUResult<()> {
+        FFTKernel::<E>::ensure_curve()?;
+
+        let mut elems = a.to_vec();
+        let omega = *omega;
+        let result =
+            scheduler::schedule(move |program| -> GPUResult<Vec<E::Fr>> {
+                let n = 1 << log_n;
+                info!(
+                    "Running communicate twice FFT of {} elements on {}(bus_id: {})...",
+                    n,
+                    program.device().name(),
+                    program.device().bus_id().unwrap()
+                );
+                let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
+
+                let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
+                let (pq_buffer, omegas_buffer) =
+                    FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
+
+                src_buffer.write_from(0, &elems)?;
+                let kernel = program.create_kernel("reverse_bits", n, None);
+                call_kernel!(kernel, &src_buffer, log_n)?;
+
+                let kernel = program.create_kernel("communicate_twice_fft", n >> 1, None);
+                call_kernel!(kernel, &src_buffer, &omegas_buffer, log_n)?;
+
+                src_buffer.read_into(0, &mut elems)?;
+
+                Ok(elems)
+            }).wait().unwrap()?;
+        a.copy_from_slice(&result);
+        Ok(())
+    }
+
     /// Distribute powers of `g` on `a`
     /// * `lgn` - Specifies log2 of number of elements
     pub fn distribute_powers(a: &mut [E::Fr], g: &E::Fr, lgn: u32) -> GPUResult<()> {
