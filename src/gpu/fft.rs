@@ -230,8 +230,8 @@ impl<E> FFTKernel<E>
                 let kernel = program.create_kernel("reverse_bits", n, None);
                 call_kernel!(kernel, &src_buffer, log_n)?;
 
-                let kernel = program.create_kernel("communicate_twice_fft", n >> 1, None);
-                call_kernel!(kernel, &src_buffer, &omegas_buffer, log_n)?;
+                let kernel = program.create_kernel("communicate_twice_fft", n >> 1, Some(n >> 1));
+                call_kernel!(kernel, &src_buffer, &omegas_buffer, opencl::LocalBuffer::<E::Fr>::new(1 << log_n), log_n)?;
 
                 src_buffer.read_into(0, &mut elems)?;
 
