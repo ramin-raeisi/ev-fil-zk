@@ -122,11 +122,11 @@ communicate_twice_fft(__global FIELD *a,      // Source buffer
   uint n = 1 << lgn;
   uint lid = 0;
 
-  for (lgm = 0; lgm < (lgn - 1); lgm++){
+  for (uint lgm = 0; lgm < (lgn - 1); lgm++) {
     uint m = 1 << lgm;
     uint shift = gsize >> lgm;
-    if (gid < (lid + (shift >> 1))){
-      for (i = 0; i < shift; i ++){
+    if (gid < (lid + (shift >> 1))) {
+      for (uint i = 0; i < shift; i++) {
         if (lgm == 0) {
           uint j = (lid + i) & (m - 1);
           uint k = 2 * m * ((lid + i) >> lgm);
@@ -134,15 +134,17 @@ communicate_twice_fft(__global FIELD *a,      // Source buffer
           FIELD t = FIELD_mul(a[k + j + m], w);
           u[k + j] = FIELD_add(a[k + j], t);
         }
-        uint j = (lid + i) & (m - 1);
-        uint k = 2 * m * ((lid + i) >> lgm);
-        FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
-        FIELD t = FIELD_mul(u[k + j + m], w);
-        u[k + j] = FIELD_add(u[k + j], t);
+        else {
+          uint j = (lid + i) & (m - 1);
+          uint k = 2 * m * ((lid + i) >> lgm);
+          FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
+          FIELD t = FIELD_mul(u[k + j + m], w);
+          u[k + j] = FIELD_add(u[k + j], t);
+        }
       }
     }
     else {
-      for (i = 0; i < shift; i++){
+      for (uint i = 0; i < shift; i++) {
         if (lgm == 0) {
           uint j = (lid+i) & (m - 1);
           uint k = 2 * m * ((lid+i) >> lgm);
@@ -151,12 +153,14 @@ communicate_twice_fft(__global FIELD *a,      // Source buffer
           u[k + j + m] = FIELD_sub(a[k + j], t);
           lid += (shift >> 1); 
         }
-        uint j = (lid+i) & (m - 1);
-        uint k = 2 * m * ((lid+i) >> lgm);
-        FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
-        FIELD t = FIELD_mul(u[k + j + m], w);
-        u[k + j + m] = FIELD_sub(u[k + j], t);
-        lid += (shift >> 1); 
+        else {
+          uint j = (lid+i) & (m - 1);
+          uint k = 2 * m * ((lid+i) >> lgm);
+          FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
+          FIELD t = FIELD_mul(u[k + j + m], w);
+          u[k + j + m] = FIELD_sub(u[k + j], t);
+          lid += (shift >> 1); 
+        }
       }
     }
   }
