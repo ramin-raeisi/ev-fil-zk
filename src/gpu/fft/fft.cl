@@ -111,7 +111,9 @@ inplace_fft(__global FIELD *a,      // Source buffer
  * Communicate twice FFT algorithm, which does not use global memory
  * 1
  */
-__kernel void
+
+
+/*__kernel void
 communicate_twice_fft(__global FIELD *a,      // Source buffer
             __global FIELD *omegas, // [omega, omega^2, omega^4, ...]
             __local FIELD *u, 
@@ -174,7 +176,7 @@ communicate_twice_fft(__global FIELD *a,      // Source buffer
   tmp = FIELD_sub(tmp, t);
   a[k + j + m] = tmp;
   a[k + j] = FIELD_add(u[k + j], t);
-}
+}*/
 
 /// Distribute powers
 /// E.g.
