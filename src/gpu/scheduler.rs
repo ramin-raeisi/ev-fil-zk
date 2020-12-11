@@ -1,4 +1,4 @@
-use std::sync::{atomic::AtomicUsize, atomic::Ordering::SeqCst, Mutex};
+use std::sync::Mutex;
 
 use futures::{Future, lazy};
 use lazy_static::*;
@@ -35,16 +35,12 @@ lazy_static! {
     pub static ref DEVICE_POOL: DevicePool = DevicePool::new();
 }
 
-pub static mut DEVICE_NUM: AtomicUsize = AtomicUsize::new(0);
+pub static mut DEVICE_NUM: usize = 0;
 
 pub fn get_next_device() -> &'static Mutex<cl::Program> {
     unsafe {
-        if DEVICE_NUM.load(SeqCst) >= DEVICE_POOL.devices.len() - 1 {
-            DEVICE_NUM.store(0, SeqCst);
-        } else {
-            DEVICE_NUM.store(DEVICE_NUM.load(SeqCst) + 1, SeqCst);
-        }
-        return &DEVICE_POOL.devices[DEVICE_NUM.load(SeqCst)];
+        DEVICE_NUM = DEVICE_NUM + 1 % DEVICE_POOL.devices.len();
+        return &DEVICE_POOL.devices[DEVICE_NUM];
     }
 }
 

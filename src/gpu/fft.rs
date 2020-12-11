@@ -183,7 +183,7 @@ impl<E> FFTKernel<E>
                 let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
 
                 let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
-                let (pq_buffer, omegas_buffer) =
+                let (_pq_buffer, omegas_buffer) =
                     FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
 
                 src_buffer.write_from(0, &elems)?;
@@ -223,7 +223,7 @@ impl<E> FFTKernel<E>
                 let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
 
                 let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
-                let (pq_buffer, omegas_buffer) =
+                let (_pq_buffer, omegas_buffer) =
                     FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
 
                 src_buffer.write_from(0, &elems)?;
