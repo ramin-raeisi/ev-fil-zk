@@ -39,7 +39,7 @@ pub static mut DEVICE_NUM: usize = 0;
 
 pub fn get_next_device() -> &'static Mutex<cl::Program> {
     unsafe {
-        DEVICE_NUM = DEVICE_NUM + 1 % DEVICE_POOL.devices.len();
+        DEVICE_NUM = (DEVICE_NUM + 1) % DEVICE_POOL.devices.len();
         return &DEVICE_POOL.devices[DEVICE_NUM];
     }
 }
