@@ -9,9 +9,9 @@ use std::any::TypeId;
 
 const LOG2_MAX_ELEMENTS: usize = 32;
 // At most 2^32 elements is supported.
-const MAX_LOG2_RADIX: u32 = 9;
+const MAX_LOG2_RADIX: u32 = 10;
 // Radix256
-const MAX_LOG2_LOCAL_WORK_SIZE: u32 = 8; // 128
+const MAX_LOG2_LOCAL_WORK_SIZE: u32 = 9; // 128
 
 pub struct FFTKernel<E>
     where
