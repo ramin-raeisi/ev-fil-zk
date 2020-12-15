@@ -124,7 +124,7 @@ impl<E> FFTKernel<E>
             scheduler::schedule(move |program| -> GPUResult<Vec<E::Fr>> {
                 let n = 1 << log_n;
                 info!(
-                    "Running radix FFT of {} elements on {}(bus_id: {})...",
+                    "Running new radix FFT of {} elements on {}(bus_id: {})...",
                     n,
                     program.device().name(),
                     program.device().bus_id().unwrap()
