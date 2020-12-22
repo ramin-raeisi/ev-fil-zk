@@ -307,7 +307,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
                 v.coset_fft(Some(&DEVICE_POOL)).unwrap();
             });*/
 
-            //a.mul_assign(&b, Some(&DEVICE_POOL))?;
+            a.mul_assign(&b, Some(&DEVICE_POOL))?;
             drop(b);
             a.sub_assign(&c, Some(&DEVICE_POOL))?;
             drop(c);
