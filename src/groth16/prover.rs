@@ -457,7 +457,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             Ok(Proof {
                 a: g_a.into_affine(),
                 b: g_b.into_affine(),
-                c: g_a.into_affine(),
+                c: g_c.into_affine(),
             })
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
 
