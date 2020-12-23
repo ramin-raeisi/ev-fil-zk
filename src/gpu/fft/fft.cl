@@ -12,6 +12,7 @@ uint bitreverse(uint n, uint bits) {
  */
 __kernel void radix_fft(
     __global FIELD *x,      // Source buffer
+    __global FIELD *y,      // Destination buffer
     __global FIELD *pq,     // Precalculated twiddle factors
     __global FIELD *omegas, // [omega, omega^2, omega^4, ...]
     __local FIELD *u,       // Local buffer to store intermediary values
@@ -28,6 +29,7 @@ __kernel void radix_fft(
   uint k = index & (p - 1);
 
   x += index;
+  y += ((index - k) << deg) + k;
 
   uint count = 1 << deg;    // 2^deg
   uint counth = count >> 1; // Half of count
@@ -60,11 +62,10 @@ __kernel void radix_fft(
 
     barrier(CLK_LOCAL_MEM_FENCE);
   }
-  x -= index;
-  x += ((index - k) << deg) + k;
+
   for (uint i = counts >> 1; i < (counte >> 1); i++) {
-    x[i * p] = u[bitreverse(i, deg)];
-    x[(i + counth) * p] = u[bitreverse(i + counth, deg)];
+    y[i * p] = u[bitreverse(i, deg)];
+    y[(i + counth) * p] = u[bitreverse(i + counth, deg)];
   }
 }
 
