@@ -311,6 +311,8 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             drop(b);
             a.sub_assign(&c, Some(&DEVICE_POOL))?;
             drop(c);
+            a.ifft(Some(&DEVICE_POOL)).unwrap();
+            a.coset_fft(Some(&DEVICE_POOL)).unwrap();
             a.divide_by_z_on_coset();
             a.icoset_fft(Some(&DEVICE_POOL))?;
             let mut a = a.into_coeffs();
