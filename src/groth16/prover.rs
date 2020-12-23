@@ -300,12 +300,12 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             let mut c =
                 EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.c, Vec::new()))?;
 
-            let mut coeff = vec![&mut a, &mut b, &mut c];
+            /*let mut coeff = vec![&mut a, &mut b, &mut c];
 
             coeff.par_iter_mut().for_each(|v| {
                 v.ifft(Some(&DEVICE_POOL)).unwrap();
                 v.coset_fft(Some(&DEVICE_POOL)).unwrap();
-            });
+            });*/
 
             a.mul_assign(&b, Some(&DEVICE_POOL))?;
             drop(b);

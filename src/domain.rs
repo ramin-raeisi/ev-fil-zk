@@ -156,7 +156,7 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
     pub fn icoset_fft(&mut self, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
         let geninv = self.geninv;
         self.ifft(devices)?;
-        self.distribute_powers(geninv, devices)?;
+        // self.distribute_powers(geninv, devices)?;
         Ok(())
     }
 
