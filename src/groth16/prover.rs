@@ -318,7 +318,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             a.truncate(a_len);
 
             Ok(Arc::new(
-                a.par_iter().map(|s| s.0.into_repr()).collect::<Vec<_>>(),
+                a.iter().map(|s| s.0.into_repr()).collect::<Vec<_>>(),
             ))
         })
         .collect::<Result<Vec<_>, SynthesisError>>()?;
