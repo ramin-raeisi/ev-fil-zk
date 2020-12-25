@@ -9,9 +9,9 @@ use std::any::TypeId;
 
 const LOG2_MAX_ELEMENTS: usize = 32;
 // At most 2^32 elements is supported.
-const MAX_LOG2_RADIX: u32 = 8;
+const MAX_LOG2_RADIX: u32 = 9;
 // Radix256
-const MAX_LOG2_LOCAL_WORK_SIZE: u32 = 7; // 128
+const MAX_LOG2_LOCAL_WORK_SIZE: u32 = 8; // 128
 
 pub struct FFTKernel<E>
     where
@@ -124,7 +124,7 @@ impl<E> FFTKernel<E>
             scheduler::schedule(move |program| -> GPUResult<Vec<E::Fr>> {
                 let n = 1 << log_n;
                 info!(
-                    "Running radix FFT of {} elements on {}(bus_id: {})...",
+                    "Running new radix FFT of {} elements on {}(bus_id: {})...",
                     n,
                     program.device().name(),
                     program.device().bus_id().unwrap()

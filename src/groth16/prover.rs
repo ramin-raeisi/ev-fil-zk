@@ -302,17 +302,24 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
 
             let mut coeff = vec![&mut a, &mut b, &mut c];
 
-            coeff.par_iter_mut().for_each(|v| {
-                v.ifft(Some(&DEVICE_POOL)).unwrap();
-                v.coset_fft(Some(&DEVICE_POOL)).unwrap();
+            coeff.par_iter_mut().enumerate().for_each(|(i, v)| {
+                if i == 2 {
+                    v.ifft(Some(&DEVICE_POOL)).unwrap();
+                } else {
+                    v.ifft(Some(&DEVICE_POOL)).unwrap();
+                    v.coset_fft(Some(&DEVICE_POOL)).unwrap();
+                }
             });
 
             a.mul_assign(&b, Some(&DEVICE_POOL))?;
             drop(b);
+            //a.sub_assign(&c, Some(&DEVICE_POOL))?;
+            //drop(c);
+            //a.divide_by_z_on_coset();
+            a.icoset_fft(Some(&DEVICE_POOL))?;
             a.sub_assign(&c, Some(&DEVICE_POOL))?;
             drop(c);
             a.divide_by_z_on_coset();
-            a.icoset_fft(Some(&DEVICE_POOL))?;
             let mut a = a.into_coeffs();
             let a_len = a.len() - 1;
             a.truncate(a_len);
