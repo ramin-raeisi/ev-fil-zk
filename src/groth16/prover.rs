@@ -313,9 +313,6 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
 
             a.mul_assign(&b, Some(&DEVICE_POOL))?;
             drop(b);
-            //a.sub_assign(&c, Some(&DEVICE_POOL))?;
-            //drop(c);
-            //a.divide_by_z_on_coset();
             a.icoset_fft(Some(&DEVICE_POOL))?;
             a.sub_assign(&c, Some(&DEVICE_POOL))?;
             drop(c);
