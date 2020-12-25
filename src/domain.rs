@@ -642,13 +642,11 @@ fn parallel_fft_consistency() {
 #[cfg(test)]
 mod tests {
     use crate::domain::{gpu_fft, parallel_fft, serial_fft, EvaluationDomain, Scalar, log2_floor};
-    use crate::gpu;
     use ff::Field;
 
     #[test]
     pub fn gpu_fft_consistency() {
         let _ = env_logger::try_init();
-        gpu::dump_device_list();
 
         use crate::bls::{Bls12, Fr};
         use std::time::Instant;

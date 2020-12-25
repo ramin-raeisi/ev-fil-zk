@@ -75,7 +75,6 @@ pub fn test_parallel_prover() {
         for _ in 0..10 {
             let now = Instant::now();
 
-            let rng = &mut thread_rng();
             let proof_higher = create_proof_batch(vec![c.clone()], &params).unwrap();
             assert!(verify_proof(&pvk, &proof_higher[0], &[]).unwrap());
 
