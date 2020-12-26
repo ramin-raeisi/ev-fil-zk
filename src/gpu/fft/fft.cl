@@ -59,8 +59,9 @@ __kernel void radix_fft(
     barrier(CLK_LOCAL_MEM_FENCE);
   }
   
+  barrier(CLK_GLOBAL_MEM_FENCE);
+  
   x += ((index - k) << deg) + k;
-
   for (uint i = counts >> 1; i < (counte >> 1); i++) {
     x[i * p] = u[bitreverse(i, deg)];
     x[(i + counth) * p] = u[bitreverse(i + counth, deg)];
