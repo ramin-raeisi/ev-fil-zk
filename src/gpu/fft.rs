@@ -6,6 +6,7 @@ use log::info;
 use rust_gpu_tools::*;
 use std::cmp;
 use std::any::TypeId;
+use rayon::prelude::*;
 
 const LOG2_MAX_ELEMENTS: usize = 32;
 // At most 2^32 elements is supported.
@@ -158,7 +159,7 @@ impl<E> FFTKernel<E>
         Ok(())
     }
 
-    /// Performs inplace FFT on `a`
+        /// Performs inplace FFT on `a`
     /// * `omega` - Special value `omega` is used for FFT over finite-fields
     /// * `lgn` - Specifies log2 of number of elements
     pub fn inplace_fft(a: &mut [E::Fr], omega: &E::Fr, log_n: u32) -> GPUResult<()> {
@@ -195,6 +196,54 @@ impl<E> FFTKernel<E>
                 Ok(elems)
             }).wait().unwrap()?;
         a.copy_from_slice(&result);
+        Ok(())
+    }
+
+    /// Performs inplace FFT on `a`
+    /// * `omega` - Special value `omega` is used for FFT over finite-fields
+    /// * `lgn` - Specifies log2 of number of elements
+    pub fn inplace_fft2(a: &mut [E::Fr], b: &mut [E::Fr], omega: &E::Fr, log_n: u32) -> GPUResult<()> {
+        FFTKernel::<E>::ensure_curve()?;
+
+        let mut elems_a = a.to_vec();
+        let mut elems_b = b.to_vec();
+        let omega = *omega;
+        let (result_a, result_b) =
+            scheduler::schedule(move |program| -> GPUResult<(Vec<E::Fr>, Vec<E::Fr>)> {
+                let n = 1 << log_n;
+                info!(
+                    "Running inplace 2 FFT of {} elements on {}(bus_id: {})...",
+                    n,
+                    program.device().name(),
+                    program.device().bus_id().unwrap()
+                );
+                let mut src_buffer_a = program.create_buffer::<E::Fr>(n)?;
+                let mut src_buffer_b = program.create_buffer::<E::Fr>(n)?;
+
+                let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
+                let (_pq_buffer, omegas_buffer) =
+                    FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
+
+                src_buffer_a.write_from(0, &elems_a)?;
+                src_buffer_b.write_from(0, &elems_b)?;
+                let mut coeff = vec![&mut src_buffer_a, &mut src_buffer_b];
+
+                coeff.par_iter_mut().for_each(|src_buffer| {
+                    let kernel = program.create_kernel("reverse_bits", n, None);
+                    call_kernel!(kernel, &**src_buffer, log_n).unwrap();
+
+                    for log_m in 0..log_n {
+                        let kernel = program.create_kernel("inplace_fft", n >> 1, None);
+                        call_kernel!(kernel, &**src_buffer, &omegas_buffer, log_n, log_m).unwrap();
+                    }
+                });
+                src_buffer_a.read_into(0, &mut elems_a)?;
+                src_buffer_b.read_into(0, &mut elems_b)?;
+
+                Ok((elems_a, elems_b))
+            }).wait().unwrap()?;
+        a.copy_from_slice(&result_a);
+        b.copy_from_slice(&result_b);
         Ok(())
     }
 

@@ -126,6 +126,32 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
         Ok(())
     }
 
+    pub fn ifft2(&mut self, other: &mut EvaluationDomain<E, G>, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
+        best_fft2(devices, &mut self.coeffs, &mut other.coeffs, &self.omegainv, self.exp)?;
+
+        let chunk_size = if self.coeffs.len() < current_num_threads() {
+            1
+        } else {
+            self.coeffs.len() / current_num_threads()
+        };
+
+        let minv = self.minv;
+
+        self.coeffs.par_chunks_mut(chunk_size).for_each(|chunk| {
+            for v in chunk.iter_mut() {
+                v.group_mul_assign(&minv);
+            }
+        });
+
+        other.coeffs.par_chunks_mut(chunk_size).for_each(|chunk| {
+            for v in chunk.iter_mut() {
+                v.group_mul_assign(&minv);
+            }
+        });
+
+        Ok(())
+    }
+
     pub fn distribute_powers(&mut self, g: E::Fr, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
         if let Some(ref _devices) = devices {
             gpu_distribute_powers(&mut self.coeffs, &g, self.exp)?;
@@ -380,7 +406,73 @@ pub fn gpu_fft<E: Engine, T: Group<E>>(
     // For compatibility/performance reasons we decided to transmute the array to the desired type
     // as it seems safe and needs less modifications in the current structure of Bellman library.
     let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
-    gpu::FFTKernel::<E>::inplace_fft(a, omega, log_n)?;
+    //gpu::FFTKernel::<E>::inplace_fft(a, omega, log_n)?;
+    gpu::FFTKernel::<E>::radix_fft(a, omega, log_n)?;
+    Ok(())
+}
+
+fn best_fft2<E: Engine, T: Group<E>>(
+    devices: Option<&gpu::DevicePool>,
+    a: &mut [T],
+    b: &mut [T],
+    omega: &E::Fr,
+    log_n: u32,
+) -> gpu::GPUResult<()> {
+    let enable_gpu_fft: bool = std::env::var("FIL_ZK_DISABLE_FFT_GPU")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FIL_ZK_DISABLE_FFT_GPU! Defaulting to 0...");
+                Ok(true)
+            }
+        })
+        .unwrap_or(true);
+
+    if 1u32 << log_n < 2 << 18 {
+        warn!("FFT elements amount is small (<= 2^18). GPU data transfer may probably take \
+            longer than perfoming FFT on CPU. Consider disabling GPU FFT with environment \
+            variable FIL_ZK_DISABLE_FFT_GPU=1");
+    }
+
+    if enable_gpu_fft {
+        if let Some(ref _devices) = devices {
+            match gpu_fft2(a, b, omega, log_n) {
+                Ok(_) => {
+                    return Ok(());
+                }
+                Err(e) => {
+                    error!("GPU FFT failed! Error: {}", e);
+                }
+            }
+        }
+    }
+
+    let log_cpus = log2_floor(rayon::current_num_threads());
+    if log_n <= log_cpus {
+        serial_fft(a, omega, log_n);
+    } else {
+        parallel_fft(a, omega, log_n, log_cpus);
+    }
+
+    Ok(())
+}
+
+pub fn gpu_fft2<E: Engine, T: Group<E>>(
+    a: &mut [T],
+    b: &mut [T],
+    omega: &E::Fr,
+    log_n: u32,
+) -> gpu::GPUResult<()> {
+    // EvaluationDomain module is supposed to work only with E::Fr elements, and not CurveProjective
+    // points. The Bellman authors have implemented an unnecessarry abstraction called Group<E>
+    // which is implemented for both PrimeField and CurveProjective elements. As nowhere in the code
+    // is the CurveProjective version used, T and E::Fr are guaranteed to be equal and thus have same
+    // size.
+    // For compatibility/performance reasons we decided to transmute the array to the desired type
+    // as it seems safe and needs less modifications in the current structure of Bellman library.
+    let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
+    let b = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(b) };
+    gpu::FFTKernel::<E>::inplace_fft2(a, b, omega, log_n)?;
     //gpu::FFTKernel::<E>::radix_fft(a, omega, log_n)?;
     Ok(())
 }

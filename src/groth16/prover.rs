@@ -1,4 +1,4 @@
-use std::sync::{Arc};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::bls::Engine;
@@ -300,14 +300,16 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             let mut c =
                 EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.c, Vec::new()))?;
 
-            let mut coeff = vec![&mut a, &mut b, &mut c];
+            let mut coeff = vec![&mut a, &mut c];
+            let b2 = Arc::new(Mutex::new(&mut b));
 
-            coeff.par_iter_mut().enumerate().for_each(|(i, v)| {
-                if i == 2 {
+            coeff.par_iter_mut().enumerate().for_each(move |(i, v)| {
+                if i == 1 {
                     v.ifft(Some(&DEVICE_POOL)).unwrap();
                 } else {
-                    v.ifft(Some(&DEVICE_POOL)).unwrap();
+                    v.ifft2(*b2.lock().unwrap(), Some(&DEVICE_POOL)).unwrap();
                     v.coset_fft(Some(&DEVICE_POOL)).unwrap();
+                    (*b2.lock().unwrap()).coset_fft(Some(&DEVICE_POOL)).unwrap();
                 }
             });
 
