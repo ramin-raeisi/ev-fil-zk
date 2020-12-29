@@ -307,7 +307,7 @@ impl<E> FFTKernel<E>
                 let g_arg = structs::PrimeFieldStruct::<E::Fr>(gl);
 
                 let kernel = program.create_kernel(
-                    "distribute_powers",
+                    "distribute_powers2",
                     //utils::get_core_count(&program.device()),
                     (n << 1) as usize,
                     None,
