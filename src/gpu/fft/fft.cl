@@ -91,7 +91,7 @@ __kernel void reverse_bits2(__global FIELD *a, // Source buffer a
                            uint lgn)          // Log2 of n
 {
   uint k = get_global_id(0);
-    if (k < (1 >> lgn)) {
+    if (k < (1 << lgn)) {
     uint rk = bitreverse(k, lgn);
     if (k < rk) {
       FIELD old = a[rk];
@@ -100,7 +100,7 @@ __kernel void reverse_bits2(__global FIELD *a, // Source buffer a
     }
   }
   else {
-    k %= (1 >> lgn);
+    k %= (1 << lgn);
     uint rk = bitreverse(k, lgn);
     if (k < rk) {
       FIELD old = b[rk];
