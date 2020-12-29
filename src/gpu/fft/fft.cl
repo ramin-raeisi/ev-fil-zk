@@ -148,10 +148,10 @@ inplace_fft2(__global FIELD *a,      // Source buffer a
   uint gid = get_global_id(0);
   uint n = 1 << lgn;
   uint m = 1 << lgm;
-  FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
   if (gid < (n >> 1)) {
     uint j = gid & (m - 1);
     uint k = 2 * m * (gid >> lgm);
+    FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
     FIELD t = FIELD_mul(a[k + j + m], w);
     FIELD tmp = a[k + j];
     tmp = FIELD_sub(tmp, t);
@@ -162,6 +162,7 @@ inplace_fft2(__global FIELD *a,      // Source buffer a
     gid %= (n >> 1);
     uint j = gid & (m - 1);
     uint k = 2 * m * (gid >> lgm);
+    FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
     FIELD t = FIELD_mul(b[k + j + m], w);
     FIELD tmp = b[k + j];
     tmp = FIELD_sub(tmp, t);
@@ -195,7 +196,7 @@ __kernel void distribute_powers2(__global FIELD *elements_a, __global FIELD *ele
   uint gid = get_global_id(0);
   uint gsize = get_global_size(0);
 
-  uint len = (uint)ceil(n / ((float)gsize << 1));
+  uint len = (uint)ceil(n / (float)(gsize >> 1));
   //uint end = min(start + len, n);
   if (gid < n) {
     uint start = len * gid;
