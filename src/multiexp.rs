@@ -40,7 +40,7 @@ impl<G: CurveAffine> SourceBuilder<G> for (Arc<Vec<G>>, usize) {
     }
 
     fn get(self) -> (Arc<Vec<G>>, usize) {
-        (self.0, self.1)
+        (self.0.clone(), self.1)
     }
 }
 
@@ -311,7 +311,7 @@ pub fn multiexp<Q, D, G, S>(
         let (bss, skip) = bases.clone().get();
         match gpu::MultiexpKernel::<G::Engine>::multiexp(
             bss,
-            Arc::new(exps),
+            Arc::new(exps.clone()),
             skip,
             n,
         ) {
