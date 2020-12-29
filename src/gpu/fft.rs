@@ -288,6 +288,54 @@ impl<E> FFTKernel<E>
         Ok(())
     }
 
+    /// Distribute powers of `g` on `a`
+    /// * `lgn` - Specifies log2 of number of elements
+    pub fn distribute_powers2(a: &mut [E::Fr], b: &mut [E::Fr], g: &E::Fr, lgn: u32) -> GPUResult<()> {
+        let mut elems_a: Vec<E::Fr> = a.to_vec();
+        let mut elems_b: Vec<E::Fr> = b.to_vec();
+        let gl = *g;
+        let (result_a, result_b) =
+            scheduler::schedule(move |program| -> GPUResult<(Vec<E::Fr>, Vec<E::Fr>)> {
+                let n = 1u32 << lgn;
+                info!(
+                    "Running 2 powers distribution of {} elements on {}(bus_id: {})...",
+                    n,
+                    program.device().name(),
+                    program.device().bus_id().unwrap()
+                );
+
+                let mut src_buffer_a = program.create_buffer::<E::Fr>(n as usize)?;
+                let mut src_buffer_b = program.create_buffer::<E::Fr>(n as usize)?;
+                src_buffer_a.write_from(0, &elems_a)?;
+                src_buffer_b.write_from(0, &elems_b)?;
+                let g_arg = structs::PrimeFieldStruct::<E::Fr>(gl);
+
+
+                let mut coeff = vec![&mut src_buffer_a, &mut src_buffer_b];
+
+                coeff.par_iter_mut().for_each(|src_buffer| {
+                    let kernel = program.create_kernel(
+                        "distribute_powers",
+                        utils::get_core_count(&program.device()),
+                        None,
+                    );
+                    call_kernel!(
+                        kernel,
+                        &**src_buffer,
+                        n,
+                        g_arg).unwrap();
+
+                });
+
+                src_buffer_a.read_into(0, &mut elems_a)?;
+                src_buffer_b.read_into(0, &mut elems_b)?;
+                Ok((elems_a, elems_b))
+            }).wait().unwrap()?;
+        a.copy_from_slice(&result_a);
+        b.copy_from_slice(&result_b);
+        Ok(())
+    }
+
     /// Memberwise multiplication/subtraction
     /// * `lgn` - Specifies log2 of number of elements
     /// * `sub` - Set true if you want subtraction instead of multiplication
