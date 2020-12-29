@@ -6,7 +6,6 @@ use log::info;
 use rust_gpu_tools::*;
 use std::cmp;
 use std::any::TypeId;
-use rayon::prelude::*;
 
 const LOG2_MAX_ELEMENTS: usize = 32;
 // At most 2^32 elements is supported.
@@ -226,17 +225,14 @@ impl<E> FFTKernel<E>
 
                 src_buffer_a.write_from(0, &elems_a)?;
                 src_buffer_b.write_from(0, &elems_b)?;
-                let mut coeff = vec![&mut src_buffer_a, &mut src_buffer_b];
 
-                coeff.par_iter_mut().for_each(|src_buffer| {
-                    let kernel = program.create_kernel("reverse_bits", n, None);
-                    call_kernel!(kernel, &**src_buffer, log_n).unwrap();
+                let kernel = program.create_kernel("reverse_bits2", n << 1 , None);
+                call_kernel!(kernel, &src_buffer_a, &src_buffer_b, log_n).unwrap();
 
-                    for log_m in 0..log_n {
-                        let kernel = program.create_kernel("inplace_fft", n >> 1, None);
-                        call_kernel!(kernel, &**src_buffer, &omegas_buffer, log_n, log_m).unwrap();
-                    }
-                });
+                for log_m in 0..log_n {
+                    let kernel = program.create_kernel("inplace_fft2", n, None);
+                    call_kernel!(kernel, &src_buffer_a, &src_buffer_b, &omegas_buffer, log_n, log_m).unwrap();
+                }
                 src_buffer_a.read_into(0, &mut elems_a)?;
                 src_buffer_b.read_into(0, &mut elems_b)?;
 
@@ -310,22 +306,18 @@ impl<E> FFTKernel<E>
                 src_buffer_b.write_from(0, &elems_b)?;
                 let g_arg = structs::PrimeFieldStruct::<E::Fr>(gl);
 
-
-                let mut coeff = vec![&mut src_buffer_a, &mut src_buffer_b];
-
-                coeff.par_iter_mut().for_each(|src_buffer| {
-                    let kernel = program.create_kernel(
-                        "distribute_powers",
-                        utils::get_core_count(&program.device()),
-                        None,
-                    );
-                    call_kernel!(
-                        kernel,
-                        &**src_buffer,
-                        n,
-                        g_arg).unwrap();
-
-                });
+                let kernel = program.create_kernel(
+                    "distribute_powers",
+                    //utils::get_core_count(&program.device()),
+                    (n << 1) as usize,
+                    None,
+                );
+                call_kernel!(
+                    kernel,
+                    &src_buffer_a,
+                    &src_buffer_b,
+                    n,
+                    g_arg).unwrap();
 
                 src_buffer_a.read_into(0, &mut elems_a)?;
                 src_buffer_b.read_into(0, &mut elems_b)?;
