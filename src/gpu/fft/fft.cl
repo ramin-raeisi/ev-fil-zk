@@ -84,34 +84,6 @@ __kernel void reverse_bits(__global FIELD *a, // Source buffer
 }
 
 /*
- * Bitreverse elements before doing inplace FFT
- */
-__kernel void reverse_bits2(__global FIELD *a, // Source buffer a
-                            __global FIELD *b, // Source buffer b
-                           uint lgn)          // Log2 of n
-{
-  uint k = get_global_id(0);
-    if (k < (1 << lgn)) {
-    uint rk = bitreverse(k, lgn);
-    if (k < rk) {
-      FIELD old = a[rk];
-      a[rk] = a[k];
-      a[k] = old;
-    }
-  }
-  else {
-    k %= (1 << lgn);
-    uint rk = bitreverse(k, lgn);
-    if (k < rk) {
-      FIELD old = b[rk];
-      b[rk] = b[k];
-      b[k] = old;
-    }
-  }
-}
-
-
-/*
  * Inplace FFT algorithm, uses 1/2 less memory than radix-fft
  * Inspired from original bellman FFT implementation
  */
@@ -134,43 +106,6 @@ inplace_fft(__global FIELD *a,      // Source buffer
   a[k + j] = FIELD_add(a[k + j], t);
 }
 
-/*
- * Inplace FFT algorithm, uses 1/2 less memory than radix-fft
- * Inspired from original bellman FFT implementation
- */
-__kernel void
-inplace_fft2(__global FIELD *a,      // Source buffer a
-            __global FIELD *b,      // Source buffer b
-            __global FIELD *omegas, // [omega, omega^2, omega^4, ...]
-            uint lgn,
-            uint lgm) // Log2 of n
-{
-  uint gid = get_global_id(0);
-  uint n = 1 << lgn;
-  uint m = 1 << lgm;
-  if (gid < (n >> 1)) {
-    uint j = gid & (m - 1);
-    uint k = 2 * m * (gid >> lgm);
-    FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
-    FIELD t = FIELD_mul(a[k + j + m], w);
-    FIELD tmp = a[k + j];
-    tmp = FIELD_sub(tmp, t);
-    a[k + j + m] = tmp;
-    a[k + j] = FIELD_add(a[k + j], t);
-  }
-  else {
-    gid %= (n >> 1);
-    uint j = gid & (m - 1);
-    uint k = 2 * m * (gid >> lgm);
-    FIELD w = FIELD_pow_lookup(omegas, j << (lgn - 1 - lgm));
-    FIELD t = FIELD_mul(b[k + j + m], w);
-    FIELD tmp = b[k + j];
-    tmp = FIELD_sub(tmp, t);
-    b[k + j + m] = tmp;
-    b[k + j] = FIELD_add(b[k + j], t);
-  }
-}
-
 /// Distribute powers
 /// E.g.
 /// [elements[0]*g^0, elements[1]*g^1, ..., elements[n]*g^n]
@@ -187,35 +122,6 @@ __kernel void distribute_powers(__global FIELD *elements, uint n, FIELD g) {
     elements[i] = FIELD_mul(elements[i], field);
     field = FIELD_mul(field, g);
   }
-}
-
-/// Distribute powers
-/// E.g.
-/// [elements[0]*g^0, elements[1]*g^1, ..., elements[n]*g^n]
-__kernel void distribute_powers2(__global FIELD *elements_a, __global FIELD *elements_b, uint n, FIELD g) {
-  uint gid = get_global_id(0);
-  uint gsize = get_global_size(0);
-
-  uint len = (uint)ceil(n / (float)(gsize >> 1));
-  //uint end = min(start + len, n);
-  if (gid < n) {
-    uint start = len * gid;
-    FIELD field = FIELD_pow(g, start);
-    elements_a[start] = FIELD_mul(elements_a[start], field);
-  }
-  else {
-    gid %= n;
-    uint start = len * gid;
-    FIELD field = FIELD_pow(g, start);
-    elements_b[start] = FIELD_mul(elements_b[start], field);
-  }
-
-  /*for (uint i = start; i < end; i++) {
-    elements[i] = FIELD_mul(elements[i], field);
-    field = FIELD_mul(field, g);
-  }*/
-
-
 }
 
 /// Memberwise multiplication

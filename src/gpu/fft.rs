@@ -198,52 +198,6 @@ impl<E> FFTKernel<E>
         Ok(())
     }
 
-    /// Performs inplace FFT on `a`
-    /// * `omega` - Special value `omega` is used for FFT over finite-fields
-    /// * `lgn` - Specifies log2 of number of elements
-    pub fn inplace_fft2(a: &mut [E::Fr], b: &mut [E::Fr], omega: &E::Fr, log_n: u32) -> GPUResult<()> {
-        FFTKernel::<E>::ensure_curve()?;
-
-        let mut elems_a = a.to_vec();
-        let mut elems_b = b.to_vec();
-        let omega = *omega;
-        let (result_a, result_b) =
-            scheduler::schedule(move |program| -> GPUResult<(Vec<E::Fr>, Vec<E::Fr>)> {
-                let n = 1 << log_n;
-                info!(
-                    "Running inplace 2 FFT of {} elements on {}(bus_id: {})...",
-                    n,
-                    program.device().name(),
-                    program.device().bus_id().unwrap()
-                );
-                let mut src_buffer_a = program.create_buffer::<E::Fr>(n)?;
-                let mut src_buffer_b = program.create_buffer::<E::Fr>(n)?;
-
-                let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
-                let (_pq_buffer, omegas_buffer) =
-                    FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
-
-                src_buffer_a.write_from(0, &elems_a)?;
-                src_buffer_b.write_from(0, &elems_b)?;
-
-                let kernel = program.create_kernel("reverse_bits2", n << 1 , None);
-                call_kernel!(kernel, &src_buffer_a, &src_buffer_b, log_n).unwrap();
-
-                for log_m in 0..log_n {
-                    let kernel = program.create_kernel("inplace_fft2", n, None);
-                    call_kernel!(kernel, &src_buffer_a, &src_buffer_b, &omegas_buffer, log_n, log_m).unwrap();
-                }
-                src_buffer_a.read_into(0, &mut elems_a)?;
-                src_buffer_b.read_into(0, &mut elems_b)?;
-
-                Ok((elems_a, elems_b))
-            }).wait().unwrap()?;
-        a.copy_from_slice(&result_a);
-        b.copy_from_slice(&result_b);
-        Ok(())
-    }
-
-   
 
     /// Distribute powers of `g` on `a`
     /// * `lgn` - Specifies log2 of number of elements
@@ -284,49 +238,6 @@ impl<E> FFTKernel<E>
         Ok(())
     }
 
-    /// Distribute powers of `g` on `a`
-    /// * `lgn` - Specifies log2 of number of elements
-    pub fn distribute_powers2(a: &mut [E::Fr], b: &mut [E::Fr], g: &E::Fr, lgn: u32) -> GPUResult<()> {
-        let mut elems_a: Vec<E::Fr> = a.to_vec();
-        let mut elems_b: Vec<E::Fr> = b.to_vec();
-        let gl = *g;
-        let (result_a, result_b) =
-            scheduler::schedule(move |program| -> GPUResult<(Vec<E::Fr>, Vec<E::Fr>)> {
-                let n = 1u32 << lgn;
-                info!(
-                    "Running 2 powers distribution of {} elements on {}(bus_id: {})...",
-                    n,
-                    program.device().name(),
-                    program.device().bus_id().unwrap()
-                );
-
-                let mut src_buffer_a = program.create_buffer::<E::Fr>(n as usize)?;
-                let mut src_buffer_b = program.create_buffer::<E::Fr>(n as usize)?;
-                src_buffer_a.write_from(0, &elems_a)?;
-                src_buffer_b.write_from(0, &elems_b)?;
-                let g_arg = structs::PrimeFieldStruct::<E::Fr>(gl);
-
-                let kernel = program.create_kernel(
-                    "distribute_powers2",
-                    //utils::get_core_count(&program.device()),
-                    (n << 1) as usize,
-                    None,
-                );
-                call_kernel!(
-                    kernel,
-                    &src_buffer_a,
-                    &src_buffer_b,
-                    n,
-                    g_arg).unwrap();
-
-                src_buffer_a.read_into(0, &mut elems_a)?;
-                src_buffer_b.read_into(0, &mut elems_b)?;
-                Ok((elems_a, elems_b))
-            }).wait().unwrap()?;
-        a.copy_from_slice(&result_a);
-        b.copy_from_slice(&result_b);
-        Ok(())
-    }
 
     /// Memberwise multiplication/subtraction
     /// * `lgn` - Specifies log2 of number of elements
