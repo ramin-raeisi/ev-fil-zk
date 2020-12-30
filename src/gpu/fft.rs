@@ -40,6 +40,7 @@ impl<E> FFTKernel<E>
     fn radix_fft_round(
         program: &opencl::Program,
         src_buffer: &opencl::Buffer<E::Fr>,
+        dst_buffer: &opencl::Buffer<E::Fr>,
         pq_buffer: &opencl::Buffer<E::Fr>,
         omegas_buffer: &opencl::Buffer<E::Fr>,
         log_n: u32,
@@ -60,6 +61,7 @@ impl<E> FFTKernel<E>
         call_kernel!(
             kernel,
             src_buffer,
+            dst_buffer,
             pq_buffer,
             omegas_buffer,
             opencl::LocalBuffer::<E::Fr>::new(1 << deg),
@@ -128,6 +130,7 @@ impl<E> FFTKernel<E>
                     program.device().bus_id().unwrap()
                 );
                 let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
+                let mut dst_buffer = program.create_buffer::<E::Fr>(n)?;
 
                 let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
                 let (pq_buffer, omegas_buffer) =
@@ -140,6 +143,7 @@ impl<E> FFTKernel<E>
                     FFTKernel::<E>::radix_fft_round(
                         program,
                         &src_buffer,
+                        &dst_buffer,
                         &pq_buffer,
                         &omegas_buffer,
                         log_n,
@@ -148,6 +152,7 @@ impl<E> FFTKernel<E>
                         max_deg,
                     )?;
                     log_p += deg;
+                    std::mem::swap(&mut src_buffer, &mut dst_buffer);
                 }
 
                 src_buffer.read_into(0, &mut elems)?;
