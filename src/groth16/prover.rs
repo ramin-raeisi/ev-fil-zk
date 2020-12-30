@@ -308,8 +308,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
                     v.ifft(Some(&DEVICE_POOL)).unwrap();
                 } else {
                     v.ifft2(*b2.lock().unwrap(), Some(&DEVICE_POOL)).unwrap();
-                    v.coset_fft(Some(&DEVICE_POOL)).unwrap();
-                    (*b2.lock().unwrap()).coset_fft(Some(&DEVICE_POOL)).unwrap();
+                    v.coset_fft2(*b2.lock().unwrap(), Some(&DEVICE_POOL)).unwrap();
                 }
             });
 

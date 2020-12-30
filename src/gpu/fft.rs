@@ -6,7 +6,6 @@ use log::info;
 use rust_gpu_tools::*;
 use std::cmp;
 use std::any::TypeId;
-use rayon::prelude::*;
 
 const LOG2_MAX_ELEMENTS: usize = 32;
 // At most 2^32 elements is supported.
@@ -226,17 +225,14 @@ impl<E> FFTKernel<E>
 
                 src_buffer_a.write_from(0, &elems_a)?;
                 src_buffer_b.write_from(0, &elems_b)?;
-                let mut coeff = vec![&mut src_buffer_a, &mut src_buffer_b];
 
-                coeff.par_iter_mut().for_each(|src_buffer| {
-                    let kernel = program.create_kernel("reverse_bits", n, None);
-                    call_kernel!(kernel, &**src_buffer, log_n).unwrap();
+                let kernel = program.create_kernel("reverse_bits2", n << 1 , None);
+                call_kernel!(kernel, &src_buffer_a, &src_buffer_b, log_n).unwrap();
 
-                    for log_m in 0..log_n {
-                        let kernel = program.create_kernel("inplace_fft", n >> 1, None);
-                        call_kernel!(kernel, &**src_buffer, &omegas_buffer, log_n, log_m).unwrap();
-                    }
-                });
+                for log_m in 0..log_n {
+                    let kernel = program.create_kernel("inplace_fft2", n, None);
+                    call_kernel!(kernel, &src_buffer_a, &src_buffer_b, &omegas_buffer, log_n, log_m).unwrap();
+                }
                 src_buffer_a.read_into(0, &mut elems_a)?;
                 src_buffer_b.read_into(0, &mut elems_b)?;
 
@@ -285,6 +281,50 @@ impl<E> FFTKernel<E>
                 Ok(elems)
             }).wait().unwrap()?;
         a.copy_from_slice(&result);
+        Ok(())
+    }
+
+    /// Distribute powers of `g` on `a`
+    /// * `lgn` - Specifies log2 of number of elements
+    pub fn distribute_powers2(a: &mut [E::Fr], b: &mut [E::Fr], g: &E::Fr, lgn: u32) -> GPUResult<()> {
+        let mut elems_a: Vec<E::Fr> = a.to_vec();
+        let mut elems_b: Vec<E::Fr> = b.to_vec();
+        let gl = *g;
+        let (result_a, result_b) =
+            scheduler::schedule(move |program| -> GPUResult<(Vec<E::Fr>, Vec<E::Fr>)> {
+                let n = 1u32 << lgn;
+                info!(
+                    "Running 2 powers distribution of {} elements on {}(bus_id: {})...",
+                    n,
+                    program.device().name(),
+                    program.device().bus_id().unwrap()
+                );
+
+                let mut src_buffer_a = program.create_buffer::<E::Fr>(n as usize)?;
+                let mut src_buffer_b = program.create_buffer::<E::Fr>(n as usize)?;
+                src_buffer_a.write_from(0, &elems_a)?;
+                src_buffer_b.write_from(0, &elems_b)?;
+                let g_arg = structs::PrimeFieldStruct::<E::Fr>(gl);
+
+                let kernel = program.create_kernel(
+                    "distribute_powers2",
+                    //utils::get_core_count(&program.device()),
+                    (n << 1) as usize,
+                    None,
+                );
+                call_kernel!(
+                    kernel,
+                    &src_buffer_a,
+                    &src_buffer_b,
+                    n,
+                    g_arg).unwrap();
+
+                src_buffer_a.read_into(0, &mut elems_a)?;
+                src_buffer_b.read_into(0, &mut elems_b)?;
+                Ok((elems_a, elems_b))
+            }).wait().unwrap()?;
+        a.copy_from_slice(&result_a);
+        b.copy_from_slice(&result_b);
         Ok(())
     }
 

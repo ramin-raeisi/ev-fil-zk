@@ -92,6 +92,11 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
         Ok(())
     }
 
+    pub fn fft2(&mut self, other: &mut EvaluationDomain<E, G>, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
+        best_fft2(devices, &mut self.coeffs, &mut other.coeffs, &self.omega, self.exp)?;
+        Ok(())
+    }
+
     pub fn mul_all(&mut self, val: E::Fr) {
         let chunk_size = if self.coeffs.len() < current_num_threads() {
             1
@@ -173,9 +178,36 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
         Ok(())
     }
 
+    pub fn distribute_powers2(&mut self, other: &mut EvaluationDomain<E, G>, g: E::Fr, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
+        if let Some(ref _devices) = devices {
+            gpu_distribute_powers2(&mut self.coeffs, &mut other.coeffs, &g, self.exp)?;
+        } else {
+            let chunk_size = if self.coeffs.len() < current_num_threads() {
+                1
+            } else {
+                self.coeffs.len() / current_num_threads()
+            };
+
+            self.coeffs.par_chunks_mut(chunk_size).enumerate().for_each(|(i, chunk)| {
+                let mut u = g.pow(&[(i * chunk_size) as u64]);
+                for v in chunk.iter_mut() {
+                    v.group_mul_assign(&u);
+                    u.mul_assign(&g);
+                }
+            });
+        }
+        Ok(())
+    }
+
     pub fn coset_fft(&mut self, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
         self.distribute_powers(E::Fr::multiplicative_generator(), devices)?;
         self.fft(devices)?;
+        Ok(())
+    }
+
+    pub fn coset_fft2(&mut self, mut other: &mut EvaluationDomain<E, G>, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
+        self.distribute_powers2(&mut other, E::Fr::multiplicative_generator(), devices)?;
+        self.fft2(&mut other, devices)?;
         Ok(())
     }
 
@@ -509,6 +541,19 @@ pub fn gpu_distribute_powers<E: Engine, T: Group<E>>(
     // The reason of unsafety is same as above.
     let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
     gpu::FFTKernel::<E>::distribute_powers(a, g, log_n)?;
+    Ok(())
+}
+
+pub fn gpu_distribute_powers2<E: Engine, T: Group<E>>(
+    a: &mut [T],
+    b: &mut [T],
+    g: &E::Fr,
+    log_n: u32,
+) -> gpu::GPUResult<()> {
+    // The reason of unsafety is same as above.
+    let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
+    let b = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(b) };
+    gpu::FFTKernel::<E>::distribute_powers2(a, b, g, log_n)?;
     Ok(())
 }
 
