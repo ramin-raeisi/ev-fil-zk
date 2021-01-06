@@ -92,6 +92,7 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
         Ok(())
     }
 
+
     pub fn mul_all(&mut self, val: E::Fr) {
         let chunk_size = if self.coeffs.len() < current_num_threads() {
             1
@@ -380,11 +381,12 @@ pub fn gpu_fft<E: Engine, T: Group<E>>(
     // For compatibility/performance reasons we decided to transmute the array to the desired type
     // as it seems safe and needs less modifications in the current structure of Bellman library.
     let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
-    //gpu::FFTKernel::<E>::communicate_twice_fft(a, omega, log_n)?;
     //gpu::FFTKernel::<E>::inplace_fft(a, omega, log_n)?;
     gpu::FFTKernel::<E>::radix_fft(a, omega, log_n)?;
     Ok(())
 }
+
+
 
 pub fn gpu_mul<E: Engine, T: Group<E>>(
     a: &mut [T],

@@ -1,4 +1,4 @@
-use std::sync::{Arc};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::bls::Engine;
@@ -302,7 +302,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
 
             let mut coeff = vec![&mut a, &mut b, &mut c];
 
-            coeff.par_iter_mut().enumerate().for_each(|(i, v)| {
+            coeff.par_iter_mut().enumerate().for_each(move |(i, v)| {
                 if i == 2 {
                     v.ifft(Some(&DEVICE_POOL)).unwrap();
                 } else {

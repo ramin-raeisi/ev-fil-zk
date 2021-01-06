@@ -8,8 +8,7 @@ use rust_gpu_tools::*;
 use std::any::TypeId;
 use std::sync::Arc;
 use futures::future::Future;
-use rayon::slice::ParallelSlice;
-use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+use rayon::iter::{ParallelIterator, IntoParallelRefIterator};
 use crate::gpu::scheduler;
 
 const MAX_WINDOW_SIZE: usize = 10;
@@ -138,10 +137,12 @@ impl<E> MultiexpKernel<E>
 
     fn multiexp_on<G>(
         program: &opencl::Program,
-        bases: &[G],
-        exps: &[<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr],
+        bases: Arc<Vec<G>>,
+        exps: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
         n: usize,
         work_size: usize,
+        start_idx_bases: usize,
+        start_idx_exps: usize,
     ) -> GPUResult<<G as CurveAffine>::Projective>
         where
             G: CurveAffine,
@@ -154,6 +155,9 @@ impl<E> MultiexpKernel<E>
             program.device().name(),
             program.device().bus_id().unwrap()
         );
+
+        let bases = &bases[start_idx_bases .. start_idx_bases + n];
+        let exps = &exps[start_idx_exps .. start_idx_exps + n];
 
         let exp_bits = exp_size::<E>() * 8;
 
@@ -226,41 +230,6 @@ impl<E> MultiexpKernel<E>
         Ok(acc)
     }
 
-    pub fn calibrate<G>(program: &opencl::Program, n: usize) -> GPUResult<usize>
-        where
-            G: CurveAffine,
-            <G as groupy::CurveAffine>::Engine: crate::bls::Engine,
-    {
-        fn n_of<F, T: Clone>(n: usize, mut f: F) -> Vec<T>
-            where
-                F: FnMut() -> T,
-        {
-            let init = (0..1024).map(|_| f()).collect::<Vec<_>>();
-            init.into_iter().cycle().take(n).collect::<Vec<_>>()
-        }
-        use std::time::Instant;
-        let rng = &mut rand::thread_rng();
-        let bases = n_of(n, || {
-            <G as CurveAffine>::Projective::random(rng).into_affine()
-        });
-        let exps = n_of(n, || <G as CurveAffine>::Scalar::random(rng).into_repr());
-        let mut best_work_size = 128;
-        let mut best_dur = None;
-        loop {
-            let now = Instant::now();
-            Self::multiexp_on(program, &bases[..], &exps[..], n, best_work_size + 128)?;
-            let dur = now.elapsed().as_secs() * 1000 as u64 + now.elapsed().subsec_millis() as u64;
-            if best_dur.is_some() && dur > ((best_dur.unwrap() as f64) * 1.1f64) as u64 {
-                break;
-            } else {
-                best_dur = Some(dur);
-            }
-            best_work_size += 128;
-        }
-        println!("Best: {}", best_work_size);
-        Ok(best_work_size)
-    }
-
     pub fn multiexp<G>(
         bases: Arc<Vec<G>>,
         exps: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
@@ -273,10 +242,6 @@ impl<E> MultiexpKernel<E>
     {
         MultiexpKernel::<E>::ensure_curve()?;
 
-        // Bases are skipped by `self.1` elements, when converted from (Arc<Vec<G>>, usize) to Source
-        // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
-        let bases = &bases[skip..(skip + n)];
-        let exps = &exps[..n];
         let mut chunk_size: usize = std::usize::MAX;
 
         info!("Running multiexp with n = {}", n);
@@ -300,18 +265,28 @@ impl<E> MultiexpKernel<E>
             }
         }
 
-        let result = bases.par_chunks(chunk_size)
-            .zip(exps.par_chunks(chunk_size))
-            .map(|(bases, exps)| {
-                let bases = bases.to_vec();
-                let exps = exps.to_vec();
+        chunk_size = std::cmp::min(chunk_size, n);
+
+        let chunks_amount: usize = ((n as f64) / (chunk_size as f64)).ceil() as usize;
+        let chunk_idxs: Vec<usize> = (0..chunks_amount).collect();
+
+        let result = chunk_idxs.par_iter()
+            .map(|chunk_idx| {
+                let start_idx = chunk_idx * chunk_size;
+                let chunk_size = std::cmp::min(chunk_size, n - start_idx);
+                let bases = bases.clone();
+                let exps = exps.clone();
                 scheduler::schedule(move |prog| -> GPUResult<<G as CurveAffine>::Projective> {
                     MultiexpKernel::<E>::multiexp_on(
                         prog,
-                        &bases,
-                        &exps,
-                        bases.len(),
+                        bases,
+                        exps,
+                        chunk_size,
                         utils::best_work_size(&prog.device(), over_g2),
+                        // Bases are skipped by `self.1` elements, when converted from (Arc<Vec<G>>, usize) to Source
+                        // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
+                        start_idx + skip,
+                        start_idx,
                     )
                 })
             })
@@ -324,5 +299,44 @@ impl<E> MultiexpKernel<E>
             });
 
         Ok(result)
+    }
+
+    pub fn calibrate<G>(program: &opencl::Program, n: usize) -> GPUResult<usize>
+        where
+            G: CurveAffine,
+            <G as groupy::CurveAffine>::Engine: crate::bls::Engine,
+    {
+        fn n_of<F, T: Clone>(n: usize, mut f: F) -> Vec<T>
+            where
+                F: FnMut() -> T,
+        {
+            let init = (0..1024).map(|_| f()).collect::<Vec<_>>();
+            init.into_iter().cycle().take(n).collect::<Vec<_>>()
+        }
+        use std::time::Instant;
+        let rng = &mut rand::thread_rng();
+        let bases = Arc::new(
+            n_of(n, || {
+            <G as CurveAffine>::Projective::random(rng).into_affine()
+        }));
+        let exps = Arc::new(
+            n_of(n, || <G as CurveAffine>::Scalar::random(rng).into_repr()));
+        let mut best_work_size = 128;
+        let mut best_dur = None;
+        loop {
+            let now = Instant::now();
+            let bases = bases.clone();
+            let exps = exps.clone();
+            Self::multiexp_on(program, bases, exps, n, best_work_size + 128, 0, 0)?;
+            let dur = now.elapsed().as_secs() * 1000 as u64 + now.elapsed().subsec_millis() as u64;
+            if best_dur.is_some() && dur > ((best_dur.unwrap() as f64) * 1.1f64) as u64 {
+                break;
+            } else {
+                best_dur = Some(dur);
+            }
+            best_work_size += 128;
+        }
+        println!("Best: {}", best_work_size);
+        Ok(best_work_size)
     }
 }
