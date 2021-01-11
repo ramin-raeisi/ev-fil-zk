@@ -2,12 +2,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::bls::Engine;
-use ff::{Field, PrimeField};
+use ff::{Field, PrimeField, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
 use rayon::prelude::*;
 
 use super::{ParameterSource, Proof};
-use crate::domain::{EvaluationDomain, Scalar};
+use crate::domain::{EvaluationDomain, Scalar, Group};
 use crate::multiexp::{multiexp, DensityTracker, FullDensity};
 use crate::{
     Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
@@ -15,6 +15,7 @@ use crate::{
 use futures::future::Future;
 use log::info;
 use crate::gpu::{DEVICE_POOL};
+use crate::multiexp::SourceBuilder;
 
 fn eval<E: Engine>(
     lc: &LinearCombination<E>,
@@ -321,8 +322,25 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             let a_len = a.len() - 1;
             a.truncate(a_len);
 
+            let mut a_sum = a[0].clone();
+            for i in 1..a.len() {
+                a_sum.group_add_assign(&a[i]);
+                a[i] = Scalar(E::Fr::zero());
+            }
+            a[0] = a_sum;
+            /*let h = params.get_h(a.len()).unwrap().get().0;
+            let base = h[0].clone();
+            let mut res = base.into_projective();
+            let mut a_sum = unsafe { std::mem::transmute::<&Scalar<E>, <<CurveAffine::Engine as ScalarEngine>::Fr as PrimeField>::Repr>(&a_sum) };
+            let mut a_sum = unsafe { std::mem::transmute::<&Scalar<E>, E::Fr>(&a_sum) };
+            res.mul_assign(a_sum); 
+
             Ok(Arc::new(
-                a.par_iter().map(|s| s.0.into_repr()).collect::<Vec<_>>(),
+                res.into_affine(),
+            ))*/
+
+            Ok(Arc::new(
+                a.iter().map(|s| s.0.into_repr()).collect::<Vec<_>>(),
             ))
         })
         .collect::<Result<Vec<_>, SynthesisError>>()?;
