@@ -315,6 +315,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             a.mul_assign(&b, Some(&DEVICE_POOL))?;
             drop(b);
             a.icoset_fft(Some(&DEVICE_POOL))?;
+            c.distribute_powers(E::Fr::multiplicative_generator(), Some(&DEVICE_POOL))?;
             a.sub_assign(&c, Some(&DEVICE_POOL))?;
             drop(c);
             a.divide_by_z_on_coset();
@@ -325,7 +326,8 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             let mut a_sum = a[0].clone();
             for i in 1..a.len() {
                 a_sum.group_add_assign(&a[i]);
-                a[i] = Scalar(E::Fr::zero());
+                let tmp = a[i].clone();
+                a[i].group_sub_assign(&tmp);
             }
             a[0] = a_sum;
             /*let h = params.get_h(a.len()).unwrap().get().0;
