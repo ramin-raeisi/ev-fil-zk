@@ -314,48 +314,13 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
 
             a.mul_assign(&b, Some(&DEVICE_POOL))?;
             drop(b);
-            a.ifft(Some(&DEVICE_POOL))?;
-            c.distribute_powers(E::Fr::multiplicative_generator(), Some(&DEVICE_POOL))?;
+            a.icoset_fft(Some(&DEVICE_POOL))?;
             a.sub_assign(&c, Some(&DEVICE_POOL))?;
             drop(c);
             a.divide_by_z_on_coset();
             let mut a = a.into_coeffs();
             let a_len = a.len() - 1;
             a.truncate(a_len);
-
-            let mut a_sum = a[0].clone();
-            for i in 1..a.len() {
-                a_sum.group_add_assign(&a[i]);
-                let tmp = a[i].clone();
-                a[i].group_sub_assign(&tmp);
-            }
-            a[0] = a_sum;
-
-
-            let g =  E::Fr::multiplicative_generator().inverse().unwrap();
-
-            info!("polynomial h");
-            let h0 = params.get_h(a.len()).unwrap().get().0[0].into_projective();
-            let mut h1 = params.get_h(a.len()).unwrap().get().0[1].into_projective();
-            h1.mul_assign(g);
-            if h1 == h0 {
-                info!("true");
-            }
-            else {
-                info!("false");
-            }
-
-
-            /*let h = params.get_h(a.len()).unwrap().get().0;
-            let base = h[0].clone();
-            let mut res = base.into_projective();
-            let mut a_sum = unsafe { std::mem::transmute::<&Scalar<E>, <<CurveAffine::Engine as ScalarEngine>::Fr as PrimeField>::Repr>(&a_sum) };
-            let mut a_sum = unsafe { std::mem::transmute::<&Scalar<E>, E::Fr>(&a_sum) };
-            res.mul_assign(a_sum); 
-
-            Ok(Arc::new(
-                res.into_affine(),
-            ))*/
 
             Ok(Arc::new(
                 a.iter().map(|s| s.0.into_repr()).collect::<Vec<_>>(),
