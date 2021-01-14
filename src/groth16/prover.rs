@@ -354,6 +354,49 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
     info!("starting multiexp phase");
     let multiexp_start = Instant::now();
 
+    info!("h_s");
+    let h_base = Arc::new(params.get_h(0).unwrap());
+    let h_s = a_s
+        .into_par_iter()
+        .map(|a| {
+            multiexp(
+                &*h_base,
+                FullDensity,
+                Arc::clone(&a),
+                Some(&DEVICE_POOL))
+        })
+        .collect::<Vec<_>>();
+
+    info!("aux_assignments");
+    let aux_assignments = provers
+        .par_iter_mut()
+        .map(|prover| {
+            let aux_assignment = std::mem::replace(&mut prover.aux_assignment, Vec::new());
+            Arc::new(
+                aux_assignment
+                    .par_iter()
+                    .map(|s| s.into_repr())
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .collect::<Vec<_>>();
+    
+    info!("l_s");
+    let l_base = Arc::new(params.get_l(0).unwrap());
+    let aux_assignments_arc = Arc::new(&aux_assignments);
+    let l_s = aux_assignments_arc
+        .into_par_iter()
+        .map(|aux_assignment| {
+            multiexp(
+                &*l_base,
+                FullDensity,
+                Arc::clone(&aux_assignment),
+                Some(&DEVICE_POOL))
+        }).collect::<Vec<_>>();
+    
+    
+
+    info!("input_assignments");
     let input_assignments = provers
         .par_iter_mut()
         .map(|prover| {
@@ -367,37 +410,8 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
         })
         .collect::<Vec<_>>();
 
-    let aux_assignments = provers
-        .par_iter_mut()
-        .map(|prover| {
-            let aux_assignment = std::mem::replace(&mut prover.aux_assignment, Vec::new());
-            Arc::new(
-                aux_assignment
-                    .par_iter()
-                    .map(|s| s.into_repr())
-                    .collect::<Vec<_>>(),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    let h_s_l_s = a_s
-        .par_iter()
-        .zip(aux_assignments.par_iter())
-        .map(|(a, aux_assignment)| {
-            (
-                multiexp(
-                    params.get_h(a.len()).unwrap(),
-                    FullDensity,
-                    a.clone(),
-                    Some(&DEVICE_POOL)),
-                multiexp(
-                    params.get_l(aux_assignment.len()).unwrap(),
-                    FullDensity,
-                    aux_assignment.clone(),
-                    Some(&DEVICE_POOL))
-            )
-        }).collect::<Vec<_>>();
-
+    info!("inputs");
+    let params_arc = Arc::new(&params);
     let inputs = provers
         .par_iter()
         .zip(input_assignments.par_iter())
@@ -406,17 +420,17 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             let a_aux_density_total = prover.a_aux_density.get_total_density();
 
             let (a_inputs_source, a_aux_source) =
-                params.get_a(input_assignment.len(), a_aux_density_total)?;
+            params_arc.get_a(input_assignment.len(), a_aux_density_total)?;
 
             let a_inputs = multiexp(
-                a_inputs_source,
+                &a_inputs_source,
                 FullDensity,
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
 
             let a_aux = multiexp(
-                a_aux_source,
+                &a_aux_source,
                 Arc::new(prover.a_aux_density.clone()),
                 aux_assignment.clone(),
                 Some(&DEVICE_POOL),
@@ -428,16 +442,16 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             let b_aux_density_total = b_aux_density.get_total_density();
 
             let (b_g2_inputs_source, b_g2_aux_source) =
-                params.get_b_g2(b_input_density_total, b_aux_density_total)?;
+                params_arc.get_b_g2(b_input_density_total, b_aux_density_total)?;
 
             let b_g2_inputs = multiexp(
-                b_g2_inputs_source,
+                &b_g2_inputs_source,
                 b_input_density,
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
             let b_g2_aux = multiexp(
-                b_g2_aux_source,
+                &b_g2_aux_source,
                 b_aux_density,
                 aux_assignment.clone(),
                 Some(&DEVICE_POOL),
@@ -455,7 +469,9 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
     let multiexp_time = multiexp_start.elapsed();
     info!("multiexp phase time: {:?}", multiexp_time);
 
-    let proofs = h_s_l_s.into_par_iter()
+    let proofs = //h_s_l_s.into_par_iter()
+        h_s.into_par_iter()
+        .zip(l_s.into_par_iter())
         .zip(inputs.into_par_iter())
         .map(|((h, l), (a_inputs, a_aux, b_g2_inputs, b_g2_aux))| {
             if vk.delta_g1.is_zero() || vk.delta_g2.is_zero() {

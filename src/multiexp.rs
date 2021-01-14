@@ -194,7 +194,7 @@ impl DensityTracker {
 }
 
 fn multiexp_inner<Q, D, G, S>(
-    bases: S,
+    bases: &S,
     density_map: D,
     exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
     c: u32,
@@ -286,7 +286,7 @@ fn multiexp_inner<Q, D, G, S>(
 /// Perform multi-exponentiation. The caller is responsible for ensuring the
 /// query size is the same as the number of exponents.
 pub fn multiexp<Q, D, G, S>(
-    bases: S,
+    bases: &S,
     density_map: D,
     exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
     devices: Option<&gpu::DevicePool>,
