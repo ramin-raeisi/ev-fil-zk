@@ -315,6 +315,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             a.mul_assign(&b, Some(&DEVICE_POOL))?;
             drop(b);
             a.icoset_fft(Some(&DEVICE_POOL))?;
+            info!("c.distribute_powers");
             c.distribute_powers(E::Fr::multiplicative_generator(), Some(&DEVICE_POOL))?;
             a.sub_assign(&c, Some(&DEVICE_POOL))?;
             drop(c);

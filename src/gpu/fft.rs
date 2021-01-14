@@ -112,16 +112,17 @@ impl<E> FFTKernel<E>
     /// Performs FFT on `a`
     /// * `omega` - Special value `omega` is used for FFT over finite-fields
     /// * `log_n` - Specifies log2 of number of elements
-    pub fn radix_fft(a: &mut [E::Fr],
+    pub fn radix_fft(a: &'static mut [<E as blstrs::ScalarEngine>::Fr],
                      omega: &E::Fr,
                      log_n: u32,
     ) -> GPUResult<()> {
         FFTKernel::<E>::ensure_curve()?;
 
-        let mut elems = a.to_vec();
+        //let mut elems = a.to_vec();
         let omega = *omega;
         let result =
-            scheduler::schedule(move |program| -> GPUResult<Vec<E::Fr>> {
+            //scheduler::schedule(move |program| -> GPUResult<Vec<E::Fr>> {
+                scheduler::schedule(move |program| -> GPUResult<&mut [E::Fr]> {
                 let n = 1 << log_n;
                 info!(
                     "Running new radix FFT of {} elements on {}(bus_id: {})...",
@@ -136,7 +137,8 @@ impl<E> FFTKernel<E>
                 let (pq_buffer, omegas_buffer) =
                     FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
 
-                src_buffer.write_from(0, &elems)?;
+                //src_buffer.write_from(0, &elems)?;
+                src_buffer.write_from(0, &a)?;
                 let mut log_p = 0u32;
                 while log_p < log_n {
                     let deg = cmp::min(max_deg, log_n - log_p);
@@ -155,11 +157,13 @@ impl<E> FFTKernel<E>
                     std::mem::swap(&mut src_buffer, &mut dst_buffer);
                 }
 
-                src_buffer.read_into(0, &mut elems)?;
+                //src_buffer.read_into(0, &mut elems)?;
+                src_buffer.read_into(0, a)?;
 
-                Ok(elems)
+                //Ok(elems)
+                Ok(a)
             }).wait().unwrap()?;
-        a.copy_from_slice(&result);
+        //a.copy_from_slice(&result);
         Ok(())
     }
 
