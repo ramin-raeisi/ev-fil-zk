@@ -314,8 +314,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
 
             a.mul_assign(&b, Some(&DEVICE_POOL))?;
             drop(b);
-            a.icoset_fft(Some(&DEVICE_POOL))?;
-            info!("c.distribute_powers");
+            a.ifft(Some(&DEVICE_POOL))?;
             c.distribute_powers(E::Fr::multiplicative_generator(), Some(&DEVICE_POOL))?;
             a.sub_assign(&c, Some(&DEVICE_POOL))?;
             drop(c);
@@ -331,6 +330,22 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
                 a[i].group_sub_assign(&tmp);
             }
             a[0] = a_sum;
+
+
+            let g =  E::Fr::multiplicative_generator().inverse().unwrap();
+
+            info!("polynomial h");
+            let h0 = params.get_h(a.len()).unwrap().get().0[0].into_projective();
+            let mut h1 = params.get_h(a.len()).unwrap().get().0[1].into_projective();
+            h1.mul_assign(g);
+            if h1 == h0 {
+                info!("true");
+            }
+            else {
+                info!("false");
+            }
+
+
             /*let h = params.get_h(a.len()).unwrap().get().0;
             let base = h[0].clone();
             let mut res = base.into_projective();
