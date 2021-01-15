@@ -194,7 +194,7 @@ impl DensityTracker {
 }
 
 fn multiexp_inner<Q, D, G, S>(
-    bases: &S,
+    bases: S,
     density_map: D,
     exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
     c: u32,
@@ -283,20 +283,6 @@ fn multiexp_inner<Q, D, G, S>(
         })
 }
 
-fn multiexp_inner_dummy<Q, D, G>(
-    _bases: Arc<Vec<G>>,
-    _density_map: D,
-    _exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
-    _c: u32,
-) -> Result<<G as CurveAffine>::Projective, SynthesisError>
-    where
-            for<'a> &'a Q: QueryDensity,
-            D: Send + Sync + 'static + Clone + AsRef<Q>,
-            G: CurveAffine,
-{
-    Ok(G::Projective::zero())
-}
-
 /// Perform multi-exponentiation. The caller is responsible for ensuring the
 /// query size is the same as the number of exponents.
 pub fn multiexp<Q, D, G>(
@@ -353,12 +339,9 @@ pub fn multiexp<Q, D, G>(
         assert!(query_size == exponents.len());
     }
 
-    /*rayon_core::scope(|s| {
-        Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(multiexp_inner(bases, density_map, exponents, c).unwrap()))))
-    })*/
-
+    let bases = (bases, bases_skip);
     rayon_core::scope(|s| {
-        Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(multiexp_inner_dummy(bases, density_map, exponents, c).unwrap()))))
+        Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(multiexp_inner(bases, density_map, exponents, c).unwrap()))))
     })
 }
 
