@@ -329,7 +329,7 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
     let fft_time = fft_start.elapsed();
     info!("FFT phase time: {:?}", fft_time);
 
-    info!("starting multiexp phase (NEW LOCAL)");
+    info!("starting multiexp phase");
     let multiexp_start = Instant::now();
 
     info!("h_s");
