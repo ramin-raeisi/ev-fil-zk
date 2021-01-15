@@ -283,10 +283,25 @@ fn multiexp_inner<Q, D, G, S>(
         })
 }
 
+fn multiexp_inner_dummy<Q, D, G>(
+    _bases: Arc<Vec<G>>,
+    _density_map: D,
+    _exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
+    _c: u32,
+) -> Result<<G as CurveAffine>::Projective, SynthesisError>
+    where
+            for<'a> &'a Q: QueryDensity,
+            D: Send + Sync + 'static + Clone + AsRef<Q>,
+            G: CurveAffine,
+{
+    Ok(G::Projective::zero())
+}
+
 /// Perform multi-exponentiation. The caller is responsible for ensuring the
 /// query size is the same as the number of exponents.
-pub fn multiexp<Q, D, G, S>(
-    bases: &S,
+pub fn multiexp<Q, D, G>(
+    bases: Arc<Vec<G>>,
+    bases_skip: usize,
     density_map: D,
     exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
     devices: Option<&gpu::DevicePool>,
@@ -296,7 +311,6 @@ pub fn multiexp<Q, D, G, S>(
             D: Send + Sync + 'static + Clone + AsRef<Q>,
             G: CurveAffine,
             G::Engine: crate::bls::Engine,
-            S: SourceBuilder<G>,
 {
     if let Some(ref _devices) = devices {
         let mut exps = vec![exponents[0]; exponents.len()];
@@ -308,7 +322,8 @@ pub fn multiexp<Q, D, G, S>(
             }
         }
 
-        let (bss, skip) = bases.clone().get();
+        let bss = bases.clone();
+        let skip = bases_skip;
         match gpu::MultiexpKernel::<G::Engine>::multiexp(
             bss,
             Arc::new(exps),
@@ -338,8 +353,12 @@ pub fn multiexp<Q, D, G, S>(
         assert!(query_size == exponents.len());
     }
 
-    rayon_core::scope(|s| {
+    /*rayon_core::scope(|s| {
         Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(multiexp_inner(bases, density_map, exponents, c).unwrap()))))
+    })*/
+
+    rayon_core::scope(|s| {
+        Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(multiexp_inner_dummy(bases, density_map, exponents, c).unwrap()))))
     })
 }
 
