@@ -379,6 +379,37 @@ impl<E: Engine> Parameters<E> {
     }
 }
 
+pub trait ParameterGetter<E: Engine>: Send + Sync {
+    fn get_vk(&self) -> Result<&VerifyingKey<E>, SynthesisError>;
+    fn get_h(&self) -> Result<Arc<Vec<E::G1Affine>>, SynthesisError>;
+    fn get_l(&self) -> Result<Arc<Vec<E::G1Affine>>, SynthesisError>;
+    fn get_a(&self) -> Result<Arc<Vec<E::G1Affine>>, SynthesisError>;
+    fn get_b_g2(&self) -> Result<Arc<Vec<E::G2Affine>>, SynthesisError>;
+}
+
+impl<'a, E: Engine> ParameterGetter<E> for &'a Parameters<E>  {
+
+    fn get_vk(&self) -> Result<&VerifyingKey<E>, SynthesisError> {
+        Ok(&self.vk)
+    }
+
+    fn get_h(&self) -> Result<Arc<Vec<E::G1Affine>>, SynthesisError> {
+        Ok(self.h.clone())
+    }
+
+    fn get_l(&self) -> Result<Arc<Vec<E::G1Affine>>, SynthesisError> {
+        Ok(self.l.clone())
+    }
+
+    fn get_a(&self) -> Result<Arc<Vec<E::G1Affine>>, SynthesisError> {
+        Ok(self.a.clone())
+    }
+
+    fn get_b_g2(&self) -> Result<Arc<Vec<E::G2Affine>>, SynthesisError> {
+        Ok(self.b_g2.clone())
+    }
+}
+
 pub trait ParameterSource<E: Engine>: Send + Sync {
     type G1Builder: SourceBuilder<E::G1Affine>;
     type G2Builder: SourceBuilder<E::G2Affine>;
@@ -396,37 +427,4 @@ pub trait ParameterSource<E: Engine>: Send + Sync {
         num_inputs: usize,
         num_aux: usize,
     ) -> Result<(Self::G2Builder, Self::G2Builder), SynthesisError>;
-}
-
-impl<'a, E: Engine> ParameterSource<E> for &'a Parameters<E> {
-    type G1Builder = (Arc<Vec<E::G1Affine>>, usize);
-    type G2Builder = (Arc<Vec<E::G2Affine>>, usize);
-
-    fn get_vk(&self, _: usize) -> Result<&VerifyingKey<E>, SynthesisError> {
-        Ok(&self.vk)
-    }
-
-    fn get_h(&self, _: usize) -> Result<Self::G1Builder, SynthesisError> {
-        Ok((self.h.clone(), 0))
-    }
-
-    fn get_l(&self, _: usize) -> Result<Self::G1Builder, SynthesisError> {
-        Ok((self.l.clone(), 0))
-    }
-
-    fn get_a(
-        &self,
-        num_inputs: usize,
-        _: usize,
-    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {
-        Ok(((self.a.clone(), 0), (self.a.clone(), num_inputs)))
-    }
-
-    fn get_b_g2(
-        &self,
-        num_inputs: usize,
-        _: usize,
-    ) -> Result<(Self::G2Builder, Self::G2Builder), SynthesisError> {
-        Ok(((self.b_g2.clone(), 0), (self.b_g2.clone(), num_inputs)))
-    }
 }

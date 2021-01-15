@@ -148,14 +148,7 @@ impl<E> MultiexpKernel<E>
             G: CurveAffine,
     {
         MultiexpKernel::<E>::ensure_curve()?;
-
-        info!(
-            "Running Multiexp of {} elements on {}(bus_id: {})...",
-            n,
-            program.device().name(),
-            program.device().bus_id().unwrap()
-        );
-
+        
         let bases = &bases[start_idx_bases .. start_idx_bases + n];
         let exps = &exps[start_idx_exps .. start_idx_exps + n];
 

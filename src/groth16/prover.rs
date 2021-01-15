@@ -1,13 +1,13 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::time::Instant;
 
 use crate::bls::Engine;
-use ff::{Field, PrimeField, ScalarEngine};
+use ff::{Field, PrimeField};
 use groupy::{CurveAffine, CurveProjective};
 use rayon::prelude::*;
 
-use super::{ParameterSource, Proof};
-use crate::domain::{EvaluationDomain, Scalar, Group};
+use super::{ParameterGetter, Proof};
+use crate::domain::{EvaluationDomain, Scalar};
 use crate::multiexp::{multiexp, DensityTracker, FullDensity};
 use crate::{
     Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
@@ -15,7 +15,6 @@ use crate::{
 use futures::future::Future;
 use log::info;
 use crate::gpu::{DEVICE_POOL};
-use crate::multiexp::SourceBuilder;
 
 fn eval<E: Engine>(
     lc: &LinearCombination<E>,
@@ -241,7 +240,7 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     }
 }
 
-pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
+pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
     circuits: Vec<C>,
     params: P,
 ) -> Result<Vec<Proof<E>>, SynthesisError>
@@ -275,8 +274,7 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
     let start = Instant::now();
     info!("starting proof timer");
 
-    let input_len = provers[0].input_assignment.len();
-    let vk = params.get_vk(input_len)?;
+    let vk = params.get_vk()?;
     let n = provers[0].a.len();
 
     // Make sure all circuits have the same input len.
@@ -335,12 +333,14 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
     let multiexp_start = Instant::now();
 
     info!("h_s");
-    let h_base = Arc::new(params.get_h(0).unwrap());
+    let h_base = params.get_h()?;
+    let h_skip = 0;
     let h_s = a_s
         .into_par_iter()
         .map(|a| {
             multiexp(
-                &*h_base,
+                h_base.clone(),
+                h_skip,
                 FullDensity,
                 Arc::clone(&a),
                 Some(&DEVICE_POOL))
@@ -362,13 +362,15 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
         .collect::<Vec<_>>();
     
     info!("l_s");
-    let l_base = Arc::new(params.get_l(0).unwrap());
+    let l_base = params.get_l()?;
+    let l_skip = 0;
     let aux_assignments_arc = Arc::new(&aux_assignments);
     let l_s = aux_assignments_arc
         .into_par_iter()
         .map(|aux_assignment| {
             multiexp(
-                &*l_base,
+                l_base.clone(),
+                l_skip,
                 FullDensity,
                 Arc::clone(&aux_assignment),
                 Some(&DEVICE_POOL))
@@ -391,26 +393,30 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
         .collect::<Vec<_>>();
 
     info!("inputs");
-    let params_arc = Arc::new(&params);
+    let a_base = params.get_a()?;
+    let b_g2_base = params.get_b_g2()?;
+
     let inputs = provers
         .par_iter()
         .zip(input_assignments.par_iter())
         .zip(aux_assignments.par_iter())
         .map(|((prover, input_assignment), aux_assignment)| {
-            let a_aux_density_total = prover.a_aux_density.get_total_density();
+            //let a_aux_density_total = prover.a_aux_density.get_total_density();
 
-            let (a_inputs_source, a_aux_source) =
-            params_arc.get_a(input_assignment.len(), a_aux_density_total)?;
+            let a_input_skip = 0;
+            let a_aux_skip = input_assignment.len();
 
             let a_inputs = multiexp(
-                &a_inputs_source,
+                a_base.clone(),
+                a_input_skip,
                 FullDensity,
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
 
             let a_aux = multiexp(
-                &a_aux_source,
+                a_base.clone(),
+                a_aux_skip,
                 Arc::new(prover.a_aux_density.clone()),
                 aux_assignment.clone(),
                 Some(&DEVICE_POOL),
@@ -419,19 +425,21 @@ pub fn create_proof_batch<E, C, P: ParameterSource<E>>(
             let b_input_density = Arc::new(prover.b_input_density.clone());
             let b_input_density_total = b_input_density.get_total_density();
             let b_aux_density = Arc::new(prover.b_aux_density.clone());
-            let b_aux_density_total = b_aux_density.get_total_density();
+            //let b_aux_density_total = b_aux_density.get_total_density();
 
-            let (b_g2_inputs_source, b_g2_aux_source) =
-                params_arc.get_b_g2(b_input_density_total, b_aux_density_total)?;
+            let b_input_skip = 0;
+            let b_aux_skip = b_input_density_total;
 
             let b_g2_inputs = multiexp(
-                &b_g2_inputs_source,
+                b_g2_base.clone(),
+                b_input_skip,
                 b_input_density,
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
             let b_g2_aux = multiexp(
-                &b_g2_aux_source,
+                b_g2_base.clone(),
+                b_aux_skip,
                 b_aux_density,
                 aux_assignment.clone(),
                 Some(&DEVICE_POOL),

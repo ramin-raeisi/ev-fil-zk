@@ -11,7 +11,7 @@ use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::{ParameterSource, PreparedVerifyingKey, VerifyingKey};
+use super::{PreparedVerifyingKey, VerifyingKey, ParameterGetter};
 use rayon::prelude::*;
 
 pub struct MappedParameters<E: Engine> {
@@ -49,15 +49,12 @@ pub struct MappedParameters<E: Engine> {
     pub checked: bool,
 }
 
-impl<'a, E: Engine> ParameterSource<E> for &'a MappedParameters<E> {
-    type G1Builder = (Arc<Vec<E::G1Affine>>, usize);
-    type G2Builder = (Arc<Vec<E::G2Affine>>, usize);
-
-    fn get_vk(&self, _: usize) -> Result<&VerifyingKey<E>, SynthesisError> {
+impl<'a, E: Engine> ParameterGetter<E> for &'a MappedParameters<E> {
+    fn get_vk(&self) -> Result<&VerifyingKey<E>, SynthesisError> {
         Ok(&self.vk)
     }
 
-    fn get_h(&self, _num_h: usize) -> Result<Self::G1Builder, SynthesisError> {
+    fn get_h(&self) -> Result<Arc<Vec<E::G1Affine>>, SynthesisError> {
         let builder = self
             .h
             .par_iter()
@@ -65,10 +62,10 @@ impl<'a, E: Engine> ParameterSource<E> for &'a MappedParameters<E> {
             .map(|h| read_g1::<E>(&self.params, h, self.checked))
             .collect::<Result<_, _>>()?;
 
-        Ok((Arc::new(builder), 0))
+        Ok(Arc::new(builder))
     }
 
-    fn get_l(&self, _num_l: usize) -> Result<Self::G1Builder, SynthesisError> {
+    fn get_l(&self) -> Result<Arc<Vec<E::G1Affine>>, SynthesisError> {
         let builder = self
             .l
             .par_iter()
@@ -76,14 +73,10 @@ impl<'a, E: Engine> ParameterSource<E> for &'a MappedParameters<E> {
             .map(|l| read_g1::<E>(&self.params, l, self.checked))
             .collect::<Result<_, _>>()?;
 
-        Ok((Arc::new(builder), 0))
+        Ok(Arc::new(builder))
     }
 
-    fn get_a(
-        &self,
-        num_inputs: usize,
-        _num_a: usize,
-    ) -> Result<(Self::G1Builder, Self::G1Builder), SynthesisError> {
+    fn get_a(&self) -> Result<Arc<Vec<E::G1Affine>>, SynthesisError> {
         let builder = self
             .a
             .par_iter()
@@ -93,14 +86,10 @@ impl<'a, E: Engine> ParameterSource<E> for &'a MappedParameters<E> {
 
         let builder: Arc<Vec<_>> = Arc::new(builder);
 
-        Ok(((builder.clone(), 0), (builder, num_inputs)))
+        Ok(builder)
     }
 
-    fn get_b_g2(
-        &self,
-        num_inputs: usize,
-        _num_b_g2: usize,
-    ) -> Result<(Self::G2Builder, Self::G2Builder), SynthesisError> {
+    fn get_b_g2(&self) -> Result<Arc<Vec<E::G2Affine>>, SynthesisError> {
         let builder = self
             .b_g2
             .par_iter()
@@ -110,7 +99,7 @@ impl<'a, E: Engine> ParameterSource<E> for &'a MappedParameters<E> {
 
         let builder: Arc<Vec<_>> = Arc::new(builder);
 
-        Ok(((builder.clone(), 0), (builder, num_inputs)))
+        Ok(builder)
     }
 }
 
