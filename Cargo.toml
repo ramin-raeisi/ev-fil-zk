@@ -43,7 +43,7 @@ paired = { version = "0.21.0", optional = true }
 
 # gpu feature 
 rust-gpu-tools = { version = "0.3.0", optional = true }
-ff-cl-gen = { version = "0.2.0", optional = true }
+ff-cl-gen = { git = "ssh://github.com/nilfoundation/ff-cl-gen", branch = "master", optional = true }
 fs2 = { version = "0.4.3", optional = true }
 fil-ocl = { version = "0.19.4", optional = true }
 
