@@ -345,6 +345,58 @@ pub fn multiexp<Q, D, G>(
     })
 }
 
+
+// fulldensity
+pub fn multiexp_fulldensity<G>(
+    bases: Arc<Vec<G>>,
+    bases_skip: usize,
+    exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
+    devices: Option<&gpu::DevicePool>,
+) -> Box<dyn Future<Item=<G as CurveAffine>::Projective, Error=SynthesisError> + Send>
+where
+    G: CurveAffine,
+    G::Engine: crate::bls::Engine,
+{
+    if let Some(ref _devices) = devices {
+        let bss = bases.clone();
+        let skip = bases_skip;
+        match gpu::MultiexpKernel::<G::Engine>::multiexp(
+            bss,
+            exponents.clone(),
+            skip,
+            exponents.len(),
+        ) {
+            Ok(p) => {
+                return rayon_core::scope(|s| {
+                    Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(p))))
+                });
+            }
+            Err(e) => {
+                error!("GPU Multiexp failed! Error: {}", e);
+            }
+        }
+    }
+
+    let density_map = FullDensity;
+
+    let c = if exponents.len() < 32 {
+        3u32
+    } else {
+        (f64::from(exponents.len() as u32)).ln().ceil() as u32
+    };
+
+    if let Some(query_size) = density_map.as_ref().get_query_size() {
+        // If the density map has a known query size, it should not be
+        // inconsistent with the number of exponents.
+        assert!(query_size == exponents.len());
+    }
+
+    let bases = (bases, bases_skip);
+    rayon_core::scope(|s| {
+        Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(multiexp_inner(bases, density_map, exponents, c).unwrap()))))
+    })
+}
+
 #[cfg(any(feature = "pairing", feature = "blst"))]
 #[test]
 fn test_with_bls12() {

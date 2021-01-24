@@ -9,7 +9,7 @@ use rayon::prelude::*;
 
 use super::{ParameterGetter, Proof};
 use crate::domain::{EvaluationDomain, Scalar};
-use crate::multiexp::{multiexp, DensityTracker, FullDensity};
+use crate::multiexp::{multiexp, multiexp_fulldensity, DensityTracker};
 use crate::{
     Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
 };
@@ -425,10 +425,9 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
     let h_s = a_s
         .into_par_iter()
         .map(|a| {
-            multiexp(
+            multiexp_fulldensity(
                 h_base.clone(),
                 h_skip,
-                FullDensity,
                 Arc::clone(&a),
                 Some(&DEVICE_POOL))
         })
@@ -439,10 +438,9 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
     let l_s = assignments
         .par_iter()
         .map(|(_, aux_assignment)| {
-            multiexp(
+            multiexp_fulldensity(
                 l_base.clone(),
                 l_skip,
-                FullDensity,
                 Arc::clone(&aux_assignment),
                 Some(&DEVICE_POOL))
         }).collect::<Vec<_>>();
@@ -458,10 +456,9 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
             let a_input_skip = 0;
             let a_aux_skip = input_assignment.len();
 
-            let a_inputs = multiexp(
+            let a_inputs = multiexp_fulldensity(
                 a_base.clone(),
                 a_input_skip,
-                FullDensity,
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
