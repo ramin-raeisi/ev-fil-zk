@@ -9,7 +9,7 @@ use rayon::prelude::*;
 
 use super::{ParameterGetter, Proof};
 use crate::domain::{EvaluationDomain, Scalar};
-use crate::multiexp::{multiexp, multiexp_fulldensity, DensityTracker};
+use crate::multiexp::{multiexp, multiexp_fulldensity, multiexp_skipdensity, density_filter, DensityTracker};
 use crate::{
     Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
 };
@@ -463,11 +463,17 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
                 Some(&DEVICE_POOL),
             );
 
-            let a_aux = multiexp(
+            let (a_aux_exps, a_aux_n) = density_filter(
                 a_base.clone(),
-                a_aux_skip,
                 Arc::new(prover.a_aux_density.clone()),
                 aux_assignment.clone(),
+            );
+
+            let a_aux = multiexp_skipdensity(
+                a_base.clone(),
+                a_aux_skip,
+                a_aux_exps,
+                a_aux_n,
                 Some(&DEVICE_POOL),
             );
 
@@ -486,11 +492,18 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
-            let b_g2_aux = multiexp(
+
+            let (b_g2_aux_exps, b_g2_aux_n) = density_filter(
+                b_g2_base.clone(),
+                b_aux_density.clone(),
+                aux_assignment.clone()
+            );
+
+            let b_g2_aux = multiexp_skipdensity(
                 b_g2_base.clone(),
                 b_aux_skip,
-                b_aux_density,
-                aux_assignment.clone(),
+                b_g2_aux_exps,
+                b_g2_aux_n,
                 Some(&DEVICE_POOL),
             );
 

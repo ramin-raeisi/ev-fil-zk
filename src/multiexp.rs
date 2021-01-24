@@ -397,6 +397,66 @@ where
     })
 }
 
+// skipdensity
+pub fn multiexp_skipdensity<G>(
+    bases: Arc<Vec<G>>,
+    bases_skip: usize,
+    exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
+    n: usize,
+    devices: Option<&gpu::DevicePool>,
+) -> Box<dyn Future<Item=<G as CurveAffine>::Projective, Error=SynthesisError> + Send>
+where
+    G: CurveAffine,
+    G::Engine: crate::bls::Engine,
+{
+    if let Some(ref _devices) = devices {
+        let bss = bases.clone();
+        let skip = bases_skip;
+        match gpu::MultiexpKernel::<G::Engine>::multiexp(
+            bss,
+            exponents.clone(),
+            skip,
+            n,
+        ) {
+            Ok(p) => {
+                return rayon_core::scope(|s| {
+                    Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(p))))
+                });
+            }
+            Err(e) => {
+                error!("GPU Multiexp failed! Error: {}", e);
+            }
+        }
+    }
+
+    rayon_core::scope(|s| {
+        Box::new(s.spawn_future(lazy(move || Err(SynthesisError::GPUError(gpu::GPUError::GPUDisabled)))))
+    })
+}
+
+// density map filter for exponents
+pub fn density_filter<Q, D, G>(
+    _bases: Arc<Vec<G>>,
+    density_map: D,
+    exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>
+) ->  (Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>, usize)
+where
+    for<'a> &'a Q: QueryDensity,
+    D: Send + Sync + 'static + Clone + AsRef<Q>,
+    G: CurveAffine,
+    G::Engine: crate::bls::Engine,
+{
+    let mut exps = vec![exponents[0]; exponents.len()];
+    let mut n = 0;
+    for (&e, d) in exponents.iter().zip(density_map.as_ref().iter()) {
+        if d {
+            exps[n] = e;
+            n += 1;
+        }
+    }
+    (Arc::new(exps), n)
+}
+
 #[cfg(any(feature = "pairing", feature = "blst"))]
 #[test]
 fn test_with_bls12() {
