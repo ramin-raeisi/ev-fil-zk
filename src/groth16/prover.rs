@@ -9,7 +9,7 @@ use rayon::prelude::*;
 
 use super::{ParameterGetter, Proof};
 use crate::domain::{EvaluationDomain, Scalar};
-use crate::multiexp::{multiexp, multiexp_fulldensity, multiexp_skipdensity, density_filter, DensityTracker};
+use crate::multiexp::{multiexp, multiexp_skipdensity, density_filter, DensityTracker};
 use crate::{
     Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
 };
@@ -425,10 +425,11 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
     let h_s = a_s
         .into_par_iter()
         .map(|a| {
-            multiexp_fulldensity(
+            multiexp_skipdensity(
                 h_base.clone(),
                 h_skip,
                 Arc::clone(&a),
+                a.len(),
                 Some(&DEVICE_POOL))
         })
         .collect::<Vec<_>>();
@@ -438,10 +439,11 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
     let l_s = assignments
         .par_iter()
         .map(|(_, aux_assignment)| {
-            multiexp_fulldensity(
+            multiexp_skipdensity(
                 l_base.clone(),
                 l_skip,
                 Arc::clone(&aux_assignment),
+                aux_assignment.len(),
                 Some(&DEVICE_POOL))
         }).collect::<Vec<_>>();
 
@@ -456,10 +458,11 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
             let a_input_skip = 0;
             let a_aux_skip = input_assignment.len();
 
-            let a_inputs = multiexp_fulldensity(
+            let a_inputs = multiexp_skipdensity(
                 a_base.clone(),
                 a_input_skip,
                 input_assignment.clone(),
+                input_assignment.len(),
                 Some(&DEVICE_POOL),
             );
 
