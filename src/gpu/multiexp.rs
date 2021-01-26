@@ -282,33 +282,36 @@ impl<E> MultiexpKernel<E>
 
             // GPU calculations
             s.spawn(move |_| {
-                let result = chunk_idxs.par_iter()
-                .map(|chunk_idx| {
-                    let start_idx = chunk_idx * chunk_size;
-                    let chunk_size = std::cmp::min(chunk_size, n - start_idx);
-                    let bases = bases.clone();
-                    let exps = exps.clone();
-                    scheduler::schedule(move |prog| -> GPUResult<<G as CurveAffine>::Projective> {
-                        MultiexpKernel::<E>::multiexp_on(
-                            prog,
-                            bases,
-                            exps,
-                            chunk_size,
-                            utils::best_work_size(&prog.device(), over_g2),
-                            // Bases are skipped by `self.1` elements, when converted from (Arc<Vec<G>>, usize) to Source
-                            // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
-                            start_idx + skip,
-                            start_idx,
-                        )
+                let mut result = <G as CurveAffine>::Projective::zero();
+                if n > 0 {
+                    result = chunk_idxs.par_iter()
+                    .map(|chunk_idx| {
+                        let start_idx = chunk_idx * chunk_size;
+                        let chunk_size = std::cmp::min(chunk_size, n - start_idx);
+                        let bases = bases.clone();
+                        let exps = exps.clone();
+                        scheduler::schedule(move |prog| -> GPUResult<<G as CurveAffine>::Projective> {
+                            MultiexpKernel::<E>::multiexp_on(
+                                prog,
+                                bases,
+                                exps,
+                                chunk_size,
+                                utils::best_work_size(&prog.device(), over_g2),
+                                // Bases are skipped by `self.1` elements, when converted from (Arc<Vec<G>>, usize) to Source
+                                // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
+                                start_idx + skip,
+                                start_idx,
+                            )
+                        })
                     })
-                })
-                .map(|future| future.wait().unwrap())
-                .collect::<GPUResult<Vec<<G as CurveAffine>::Projective>>>().unwrap()
-                .iter()
-                .fold(<G as CurveAffine>::Projective::zero(), |mut a, b| {
-                    a.add_assign(b);
-                    a
-                });
+                    .map(|future| future.wait().unwrap())
+                    .collect::<GPUResult<Vec<<G as CurveAffine>::Projective>>>().unwrap()
+                    .iter()
+                    .fold(<G as CurveAffine>::Projective::zero(), |mut a, b| {
+                        a.add_assign(b);
+                        a
+                    });
+                }
 
                 tx_gpu.send(result).unwrap();
             });
