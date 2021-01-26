@@ -250,7 +250,10 @@ impl<E> MultiexpKernel<E>
         };
 
         // use cpu for parallel calculations
-        let cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
+        let mut cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
+        if n < 1000 {
+            cpu_n = n;
+        }
         let n = n - cpu_n;
 
         for p in scheduler::DEVICE_POOL.devices.iter() {
