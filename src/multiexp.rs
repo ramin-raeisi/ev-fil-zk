@@ -193,6 +193,94 @@ impl DensityTracker {
     }
 }
 
+pub fn multiexp_cpu<G>(
+    bases: Arc<Vec<G>>,
+    exps: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
+    n: usize,
+    start_idx_bases: usize,
+    start_idx_exps: usize,
+) -> Result<<G as CurveAffine>::Projective, SynthesisError>
+    where G: CurveAffine,
+{
+    let c = if n < 32 {
+        3u32
+    } else {
+        (f64::from(n as u32)).ln().ceil() as u32
+    };
+
+    // Perform this region of the multiexp
+    let this = move |bases: Arc<Vec<G>>,
+                     exps: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
+                     skip: u32,
+                     n: usize,
+                     start_idx_bases: usize,
+                     start_idx_exps: usize|
+                     -> Result<_, SynthesisError> {
+        // Accumulate the result
+        let mut acc = G::Projective::zero();
+
+        // Create space for the buckets
+        let mut buckets = vec![<G as CurveAffine>::Projective::zero(); (1 << c) - 1];
+
+        let zero = <G::Engine as ScalarEngine>::Fr::zero().into_repr();
+        let one = <G::Engine as ScalarEngine>::Fr::one().into_repr();
+
+        // only the first round uses this
+        let handle_trivial = skip == 0;
+
+        // Sort the bases into buckets
+        for i in 0..n {
+            let exp_value = exps[start_idx_exps + i];
+            let base_value = bases[start_idx_bases + i];
+            if exp_value == zero {
+                continue;
+            } else if exp_value == one {
+                if handle_trivial {
+                    acc.add_assign_mixed(&base_value);
+                }
+            } else {
+                let mut exp = exp_value;
+                exp.shr(skip);
+                let exp = exp.as_ref()[0] % (1 << c);
+
+                if exp != 0 {
+                    buckets[(exp - 1) as usize].add_assign_mixed(&base_value);
+                }
+            }
+        }
+
+        // Summation by parts
+        // e.g. 3a + 2b + 1c = a +
+        //                    (a) + b +
+        //                    ((a) + b) + c
+        let mut running_sum = G::Projective::zero();
+        for exp in buckets.into_iter().rev() {
+            running_sum.add_assign(&exp);
+            acc.add_assign(&running_sum);
+        }
+
+        Ok(acc)
+    };
+
+    let parts = vec![0..<G::Engine as ScalarEngine>::Fr::NUM_BITS]
+        .par_chunks(c as usize)
+        .map(|skip| this(bases.clone(), exps.clone(), skip.last()
+            .unwrap().clone().last().unwrap(), n, start_idx_bases, start_idx_exps))
+        .collect::<Vec<Result<_, _>>>();
+
+    parts
+        .into_iter()
+        .rev()
+        .try_fold(<G as CurveAffine>::Projective::zero(), |mut acc, part| {
+            for _ in 0..c {
+                acc.double();
+            }
+
+            acc.add_assign(&part?);
+            Ok(acc)
+        })
+}
+
 fn multiexp_inner<Q, D, G, S>(
     bases: S,
     density_map: D,

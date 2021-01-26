@@ -6,16 +6,18 @@ use groupy::{CurveAffine, CurveProjective};
 use log::{error, info};
 use rust_gpu_tools::*;
 use std::any::TypeId;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use futures::future::Future;
 use rayon::iter::{ParallelIterator, IntoParallelRefIterator};
 use crate::gpu::scheduler;
+
+use crate::multiexp::{multiexp_cpu}; // for cpu-based parallel computations
 
 const MAX_WINDOW_SIZE: usize = 10;
 const LOCAL_WORK_SIZE: usize = 256;
 const MEMORY_PADDING: f64 = 0.2f64;
 // Let 20% of GPU memory be free
-const CPU_UTILIZATION: f64 = 0.875;
+const CPU_UTILIZATION: f64 = 0.1;
 // Increase GPU memory usage via inner loop, 1 for default value
 const CHUNK_SIZE_MULTIPLIER: f64 = 2.0;
 
@@ -247,6 +249,10 @@ impl<E> MultiexpKernel<E>
             return Err(GPUError::Simple("Only E::G1 and E::G2 are supported!"));
         };
 
+        // use cpu for parallel calculations
+        let cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
+        let n = n - cpu_n;
+
         for p in scheduler::DEVICE_POOL.devices.iter() {
             let data = p.lock().unwrap();
             let cur: usize = MultiexpKernel::<E>::chunk_size_of(&data,
@@ -263,35 +269,74 @@ impl<E> MultiexpKernel<E>
         let chunks_amount: usize = ((n as f64) / (chunk_size as f64)).ceil() as usize;
         let chunk_idxs: Vec<usize> = (0..chunks_amount).collect();
 
-        let result = chunk_idxs.par_iter()
-            .map(|chunk_idx| {
-                let start_idx = chunk_idx * chunk_size;
-                let chunk_size = std::cmp::min(chunk_size, n - start_idx);
-                let bases = bases.clone();
-                let exps = exps.clone();
-                scheduler::schedule(move |prog| -> GPUResult<<G as CurveAffine>::Projective> {
-                    MultiexpKernel::<E>::multiexp_on(
-                        prog,
-                        bases,
-                        exps,
-                        chunk_size,
-                        utils::best_work_size(&prog.device(), over_g2),
-                        // Bases are skipped by `self.1` elements, when converted from (Arc<Vec<G>>, usize) to Source
-                        // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
-                        start_idx + skip,
-                        start_idx,
-                    )
+        rayon::scope(|s| {
+            // concurrent computing
+            let (tx_gpu, rx_gpu) = mpsc::channel();
+            let (tx_cpu, rx_cpu) = mpsc::channel();
+
+            let cpu_bases = bases.clone();
+            let cpu_exps = exps.clone();
+
+            // GPU calculations
+            s.spawn(move |_| {
+                let result = chunk_idxs.par_iter()
+                .map(|chunk_idx| {
+                    let start_idx = chunk_idx * chunk_size;
+                    let chunk_size = std::cmp::min(chunk_size, n - start_idx);
+                    let bases = bases.clone();
+                    let exps = exps.clone();
+                    scheduler::schedule(move |prog| -> GPUResult<<G as CurveAffine>::Projective> {
+                        MultiexpKernel::<E>::multiexp_on(
+                            prog,
+                            bases,
+                            exps,
+                            chunk_size,
+                            utils::best_work_size(&prog.device(), over_g2),
+                            // Bases are skipped by `self.1` elements, when converted from (Arc<Vec<G>>, usize) to Source
+                            // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
+                            start_idx + skip,
+                            start_idx,
+                        )
+                    })
                 })
-            })
-            .map(|future| future.wait().unwrap())
-            .collect::<GPUResult<Vec<<G as CurveAffine>::Projective>>>()?
-            .iter()
-            .fold(<G as CurveAffine>::Projective::zero(), |mut a, b| {
-                a.add_assign(b);
-                a
+                .map(|future| future.wait().unwrap())
+                .collect::<GPUResult<Vec<<G as CurveAffine>::Projective>>>().unwrap()
+                .iter()
+                .fold(<G as CurveAffine>::Projective::zero(), |mut a, b| {
+                    a.add_assign(b);
+                    a
+                });
+
+                tx_gpu.send(result).unwrap();
             });
 
-        Ok(result)
+            // CPU calculations
+            s.spawn(move |_| {
+                info!("CPU run multiexp over {} elements", cpu_n);
+
+                let cpu_acc = multiexp_cpu(
+                    cpu_bases.clone(),
+                    cpu_exps.clone(),
+                    cpu_n,
+                    n + skip, // use last values of the vec
+                    n,
+                );
+                let cpu_r = cpu_acc.unwrap();
+
+                tx_cpu.send(cpu_r).unwrap();
+            });
+
+            let mut acc = <G as CurveAffine>::Projective::zero();
+
+            // waiting results...
+            let gpu_r = rx_gpu.recv().unwrap();
+            let cpu_r = rx_cpu.recv().unwrap();
+
+            acc.add_assign(&gpu_r);
+            acc.add_assign(&cpu_r);
+            
+            Ok(acc)
+        })
     }
 
     pub fn calibrate<G>(program: &opencl::Program, n: usize) -> GPUResult<usize>

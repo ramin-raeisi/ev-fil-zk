@@ -1,6 +1,5 @@
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
-use std::thread;
 
 use crate::bls::Engine;
 use ff::{Field, PrimeField};
