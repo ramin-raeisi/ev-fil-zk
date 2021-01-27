@@ -1,7 +1,7 @@
 use bit_vec::{self, BitVec};
 use ff::{Field, PrimeField, PrimeFieldRepr, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
-use log::error;
+use log::{error};
 use rayon::prelude::*;
 use std::io;
 use std::iter;
@@ -232,19 +232,19 @@ pub fn multiexp_cpu<G>(
         for i in 0..n {
             let exp_value = exps[start_idx_exps + i];
             let base_value = bases[start_idx_bases + i];
-            if exp_value == zero {
-                continue;
-            } else if exp_value == one {
+            if exp_value == one {
                 if handle_trivial {
                     acc.add_assign_mixed(&base_value);
                 }
             } else {
-                let mut exp = exp_value;
-                exp.shr(skip);
-                let exp = exp.as_ref()[0] % (1 << c);
+                if exp_value != zero {
+                    let mut exp = exp_value;
+                    exp.shr(skip);
+                    let exp = exp.as_ref()[0] % (1 << c);
 
-                if exp != 0 {
-                    buckets[(exp - 1) as usize].add_assign_mixed(&base_value);
+                    if exp != 0 {
+                        buckets[(exp - 1) as usize].add_assign_mixed(&base_value);
+                    }
                 }
             }
         }
@@ -262,10 +262,11 @@ pub fn multiexp_cpu<G>(
         Ok(acc)
     };
 
-    let parts = vec![0..<G::Engine as ScalarEngine>::Fr::NUM_BITS]
-        .par_chunks(c as usize)
-        .map(|skip| this(bases.clone(), exps.clone(), skip.last()
-            .unwrap().clone().last().unwrap(), n, start_idx_bases, start_idx_exps))
+    let parts = (0..<G::Engine as ScalarEngine>::Fr::NUM_BITS)
+        .step_by(c as usize)
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .map(|skip| this(bases.clone(), exps.clone(), skip, n, start_idx_bases, start_idx_exps))
         .collect::<Vec<Result<_, _>>>();
 
     parts
