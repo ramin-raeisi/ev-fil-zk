@@ -1,7 +1,7 @@
 use bit_vec::{self, BitVec};
 use ff::{Field, PrimeField, PrimeFieldRepr, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
-use log::{error, info};
+use log::{error};
 use rayon::prelude::*;
 use std::io;
 use std::iter;
@@ -228,9 +228,6 @@ pub fn multiexp_cpu<G>(
         // only the first round uses this
         let handle_trivial = skip == 0;
 
-        info!("cpu multiexp inner: n = {}, start_idx_bases = {}, start_idx_exps = {}, handle_trivial = {}, skip = {}", n, start_idx_bases, start_idx_exps, handle_trivial, skip);
-        info!("buckets.len = {}", buckets.len());
-
         // Sort the bases into buckets
         for i in 0..n {
             let exp_value = exps[start_idx_exps + i];
@@ -265,7 +262,6 @@ pub fn multiexp_cpu<G>(
         Ok(acc)
     };
 
-    info!("cpu multiexp. n = {}, c = {}", n, c);
     let parts = (0..<G::Engine as ScalarEngine>::Fr::NUM_BITS)
         .step_by(c as usize)
         .collect::<Vec<_>>()

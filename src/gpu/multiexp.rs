@@ -72,10 +72,10 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
     let lower_bound = (((exp_bits * n) as f64) / ((work_size) as f64)).ln();
     for w in 0..MAX_WINDOW_SIZE {
         if (w as f64) + (w as f64).ln() > lower_bound {
+            info!("calculated window size: {}", w);
             return w;
         }
     }
-    info!("use default window_size");
     ger_max_window()
 }
 
@@ -255,7 +255,6 @@ impl<E> MultiexpKernel<E>
         let mut chunk_size: usize = std::usize::MAX;
 
         info!("Running multiexp with n = {}", n);
-        info!("skip: {}", skip);
 
         let over_g2 = if TypeId::of::<G>() == TypeId::of::<E::G1Affine>() {
             false
@@ -284,7 +283,6 @@ impl<E> MultiexpKernel<E>
         }
 
         chunk_size = std::cmp::min(chunk_size, n);
-        info!("chunk_size: {}", chunk_size);
 
         let chunks_amount: usize = ((n as f64) / (chunk_size as f64)).ceil() as usize;
         let chunk_idxs: Vec<usize> = (0..chunks_amount).collect();
