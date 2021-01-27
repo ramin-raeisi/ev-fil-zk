@@ -35,6 +35,18 @@ pub fn get_cpu_utilization() -> f64 {
         .min(1f64)
 }
 
+pub fn ger_max_window() -> usize {
+    std::env::var("FIL_ZK_MAX_WINDOW")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FIL_ZK_MAX_WINDOW! Defaulting to {}", MAX_WINDOW_SIZE);
+                Ok(MAX_WINDOW_SIZE)
+            }
+        })
+        .unwrap_or(MAX_WINDOW_SIZE)
+}
+
 // Multiexp kernel for a single GPU
 pub struct MultiexpKernel<E>
     where
@@ -63,8 +75,8 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
             return w;
         }
     }
-
-    MAX_WINDOW_SIZE
+    info!("use default window_size");
+    ger_max_window()
 }
 
 fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usize) -> usize {
@@ -134,6 +146,9 @@ impl<E> MultiexpKernel<E>
         let exp_bits = exp_size::<E>() * 8;
         let max_n = calc_chunk_size::<E>(program.device().memory(), work_size, over_g2);
         let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
+        if max_n < best_n {
+            info!("the best chunks size > max chunk size. Probably, settings are wrong for this machine");
+        }
         std::cmp::min(max_n, best_n)
     }
 
@@ -240,6 +255,7 @@ impl<E> MultiexpKernel<E>
         let mut chunk_size: usize = std::usize::MAX;
 
         info!("Running multiexp with n = {}", n);
+        info!("skip: {}", skip);
 
         let over_g2 = if TypeId::of::<G>() == TypeId::of::<E::G1Affine>() {
             false
@@ -251,9 +267,9 @@ impl<E> MultiexpKernel<E>
 
         // use cpu for parallel calculations
         let mut cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
-        if n < 1000 {
+        /*if n < 1000 {
             cpu_n = n;
-        }
+        }*/
         let n = n - cpu_n;
 
         for p in scheduler::DEVICE_POOL.devices.iter() {
@@ -268,6 +284,7 @@ impl<E> MultiexpKernel<E>
         }
 
         chunk_size = std::cmp::min(chunk_size, n);
+        info!("chunk_size: {}", chunk_size);
 
         let chunks_amount: usize = ((n as f64) / (chunk_size as f64)).ceil() as usize;
         let chunk_idxs: Vec<usize> = (0..chunks_amount).collect();
@@ -320,16 +337,19 @@ impl<E> MultiexpKernel<E>
             s.spawn(move |_| {
                 info!("CPU run multiexp over {} elements", cpu_n);
 
-                let cpu_acc = multiexp_cpu(
-                    cpu_bases.clone(),
-                    cpu_exps.clone(),
-                    cpu_n,
-                    n + skip, // use last values of the vec
-                    n,
-                );
-                let cpu_r = cpu_acc.unwrap();
+                let mut cpu_acc = <G as CurveAffine>::Projective::zero();
 
-                tx_cpu.send(cpu_r).unwrap();
+                if cpu_n > 0 {
+                    cpu_acc = multiexp_cpu(
+                        cpu_bases.clone(),
+                        cpu_exps.clone(),
+                        cpu_n,
+                        n + skip, // use last values of the vec
+                        n,
+                    ).unwrap();
+                }
+
+                tx_cpu.send(cpu_acc).unwrap();
             });
 
             let mut acc = <G as CurveAffine>::Projective::zero();
