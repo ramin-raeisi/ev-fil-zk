@@ -1,4 +1,4 @@
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc};
 use std::time::Instant;
 
 use crate::bls::Engine;
@@ -286,69 +286,6 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
         );
     });
 
-
-    let now = Instant::now();
-    let (tx_h, rx_h) = mpsc::channel();
-    let (tx_l, rx_l) = mpsc::channel();
-    let (tx_a, rx_a) = mpsc::channel();
-    let (tx_bg2, rx_bg2) = mpsc::channel();
-    let (tx_assignments, rx_assignments) = mpsc::channel();
-    rayon::scope(|s| {
-        let params = &params;
-        let provers = &mut provers;
-        // h_s
-        s.spawn(move |_| {
-            let h_base = params.get_h().unwrap();
-            tx_h.send(h_base).unwrap();
-        });
-        // l_s
-        s.spawn(move |_| {
-            let l_base = params.get_l().unwrap();
-            tx_l.send(l_base).unwrap();
-        });
-        // a_base
-        s.spawn(move |_| {
-            let a_base = params.get_a().unwrap();
-            tx_a.send(a_base).unwrap();
-        });
-        // b_g2
-        s.spawn(move |_| {
-            let b_g2_base = params.get_b_g2().unwrap();
-            tx_bg2.send(b_g2_base).unwrap();
-        });
-        // assigments
-        s.spawn(move |_| {
-            let assignments = provers
-                    .par_iter_mut()
-                    .map(|prover| {
-                        let _input_assignment = std::mem::replace(&mut prover.input_assignment, Vec::new());
-                        let _aux_assignment = std::mem::replace(&mut prover.aux_assignment, Vec::new());
-                        let input_assignment = Arc::new(
-                            _input_assignment
-                                .into_iter()
-                                .map(|s| s.into_repr())
-                                .collect::<Vec<_>>(),
-                        );
-                        let aux_assignment = Arc::new(
-                            _aux_assignment
-                                .into_iter()
-                                .map(|s| s.into_repr())
-                                .collect::<Vec<_>>(),
-                        );
-                        (input_assignment, aux_assignment)
-                    })
-                    .collect::<Vec<_>>();
-            tx_assignments.send(assignments).unwrap();
-        });
-    }); //scope
-
-    let h_base = rx_h.recv().unwrap();
-    let l_base = rx_l.recv().unwrap();
-    let a_base = rx_a.recv().unwrap();
-    let b_g2_base = rx_bg2.recv().unwrap();
-    let assignments = rx_assignments.recv().unwrap();
-    info!("params load time: {:?}", now.elapsed());
-
     
     info!("starting FFT phase");
     let fft_start = Instant::now();
@@ -393,33 +330,11 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
     let fft_time = fft_start.elapsed();
     info!("FFT phase time: {:?}", fft_time);
 
-    // run h_s and l_s in parallel
-    /*rayon::scope(|s| {
-        let h_s;
-        let l_s;
-        s.spawn(move |_| {
-            let h_base = rx_h.recv().unwrap();
-            info!("h_s");
-            let h_skip = 0;
-            h_s = a_s
-                .into_par_iter()
-                .map(|a| {
-                    multiexp(
-                        h_base.clone(),
-                        h_skip,
-                        FullDensity,
-                        Arc::clone(&a),
-                        Some(&DEVICE_POOL))
-                })
-                .collect::<Vec<_>>();
-            });
-        }); // h_s spawn
-    });*/
-
     info!("starting multiexp phase");
     let multiexp_start = Instant::now();
 
     info!("h_s");
+    let h_base = params.get_h().unwrap();
     let h_skip = 0;
     let h_s = a_s
         .into_par_iter()
@@ -432,12 +347,28 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
                 Some(&DEVICE_POOL))
         })
         .collect::<Vec<_>>();
+
+    info!("aux_assignments");	
+    let aux_assignments = provers	
+        .par_iter_mut()	
+        .map(|prover| {	
+            let aux_assignment = std::mem::replace(&mut prover.aux_assignment, Vec::new());	
+            Arc::new(	
+                aux_assignment	
+                    .par_iter()	
+                    .map(|s| s.into_repr())	
+                    .collect::<Vec<_>>(),	
+            )	
+        })	
+        .collect::<Vec<_>>();
     
     info!("l_s");
+    let l_base = params.get_l().unwrap();
     let l_skip = 0;
-    let l_s = assignments
-        .par_iter()
-        .map(|(_, aux_assignment)| {
+    let aux_assignments_arc = Arc::new(&aux_assignments);
+    let l_s = aux_assignments_arc
+        .into_par_iter()
+        .map(|aux_assignment| {
             multiexp_skipdensity(
                 l_base.clone(),
                 l_skip,
@@ -446,12 +377,31 @@ pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
                 Some(&DEVICE_POOL))
         }).collect::<Vec<_>>();
 
+
+    info!("input_assignments");	
+    let input_assignments = provers	
+        .par_iter_mut()	
+        .map(|prover| {	
+            let input_assignment = std::mem::replace(&mut prover.input_assignment, Vec::new());	
+            Arc::new(	
+                input_assignment	
+                    .par_iter()	
+                    .map(|s| s.into_repr())	
+                    .collect::<Vec<_>>(),	
+            )	
+        })	
+        .collect::<Vec<_>>();
+
     info!("inputs");
+
+    let a_base = params.get_a().unwrap();
+    let b_g2_base = params.get_b_g2().unwrap();
 
     let inputs = provers
         .par_iter()
-        .zip(assignments.par_iter())
-        .map(|(prover, (input_assignment, aux_assignment))| {
+        .zip(input_assignments.par_iter())
+        .zip(aux_assignments.par_iter())
+        .map(|((prover, input_assignment), aux_assignment)| {
             //let a_aux_density_total = prover.a_aux_density.get_total_density();
 
             let a_input_skip = 0;
