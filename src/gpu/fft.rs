@@ -14,15 +14,15 @@ const MAX_LOG2_RADIX: u32 = 9;
 const MAX_LOG2_LOCAL_WORK_SIZE: u32 = 8; // 128
 
 pub struct FFTKernel<E>
-    where
-        E: Engine,
+where
+    E: Engine,
 {
     _phantom: std::marker::PhantomData<E::Fr>,
 }
 
 impl<E> FFTKernel<E>
-    where
-        E: Engine,
+where
+    E: Engine,
 {
     fn ensure_curve() -> GPUResult<()> {
         if TypeId::of::<E>() == TypeId::of::<Bls12>() {
@@ -113,89 +113,87 @@ impl<E> FFTKernel<E>
     /// * `omega` - Special value `omega` is used for FFT over finite-fields
     /// * `log_n` - Specifies log2 of number of elements
     pub fn radix_fft(a: &'static mut [<E as blstrs::ScalarEngine>::Fr],
-                     omega: &E::Fr,
-                     log_n: u32,
+        omega: &E::Fr,
+        log_n: u32,
     ) -> GPUResult<()> {
         FFTKernel::<E>::ensure_curve()?;
 
         let omega = *omega;
-        let result =
-            scheduler::schedule(move |program| -> GPUResult<&mut [E::Fr]> {
-                let n = 1 << log_n;
-                info!(
-                    "Running new radix FFT of {} elements on {}(bus_id: {})...",
-                    n,
-                    program.device().name(),
-                    program.device().bus_id().unwrap()
-                );
-                let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
-                let mut dst_buffer = program.create_buffer::<E::Fr>(n)?;
+        scheduler::schedule(move |program| -> GPUResult<&mut [E::Fr]> {
+            let n = 1 << log_n;
+            info!(
+                "Running new radix FFT of {} elements on {}(bus_id: {})...",
+                n,
+                program.device().name(),
+                program.device().bus_id().unwrap()
+            );
+            let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
+            let mut dst_buffer = program.create_buffer::<E::Fr>(n)?;
 
-                let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
-                let (pq_buffer, omegas_buffer) =
-                    FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
+            let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
+            let (pq_buffer, omegas_buffer) =
+                FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
 
-                src_buffer.write_from(0, &a)?;
-                let mut log_p = 0u32;
-                while log_p < log_n {
-                    let deg = cmp::min(max_deg, log_n - log_p);
-                    FFTKernel::<E>::radix_fft_round(
-                        program,
-                        &src_buffer,
-                        &dst_buffer,
-                        &pq_buffer,
-                        &omegas_buffer,
-                        log_n,
-                        log_p,
-                        deg,
-                        max_deg,
-                    )?;
-                    log_p += deg;
-                    std::mem::swap(&mut src_buffer, &mut dst_buffer);
-                }
+            src_buffer.write_from(0, &a)?;
+            let mut log_p = 0u32;
+            while log_p < log_n {
+                let deg = cmp::min(max_deg, log_n - log_p);
+                FFTKernel::<E>::radix_fft_round(
+                    program,
+                    &src_buffer,
+                    &dst_buffer,
+                    &pq_buffer,
+                    &omegas_buffer,
+                    log_n,
+                    log_p,
+                    deg,
+                    max_deg,
+                )?;
+                log_p += deg;
+                std::mem::swap(&mut src_buffer, &mut dst_buffer);
+            }
 
-                src_buffer.read_into(0, a)?;
+            src_buffer.read_into(0, a)?;
 
-                Ok(a)
-            }).wait().unwrap()?;
+            Ok(a)
+        }).wait().unwrap()?;
         Ok(())
     }
 
-        /// Performs inplace FFT on `a`
+    /// Performs inplace FFT on `a`
     /// * `omega` - Special value `omega` is used for FFT over finite-fields
     /// * `lgn` - Specifies log2 of number of elements
     pub fn inplace_fft(a: &'static mut [<E as blstrs::ScalarEngine>::Fr], omega: &E::Fr, log_n: u32) -> GPUResult<()> {
         FFTKernel::<E>::ensure_curve()?;
 
         let omega = *omega;
-        let result =
-            scheduler::schedule(move |program| -> GPUResult<&mut [E::Fr]> {
-                let n = 1 << log_n;
-                info!(
-                    "Running inplace FFT of {} elements on {}(bus_id: {})...",
-                    n,
-                    program.device().name(),
-                    program.device().bus_id().unwrap()
-                );
-                let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
+        scheduler::schedule(move |program| -> GPUResult<&mut [E::Fr]> {
+            let n = 1 << log_n;
+            info!(
+                "Running inplace FFT of {} elements on {}(bus_id: {})...",
+                n,
+                program.device().name(),
+                program.device().bus_id().unwrap()
+            );
+            let mut src_buffer = program.create_buffer::<E::Fr>(n)?;
 
-                let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
-                let (_pq_buffer, omegas_buffer) =
-                    FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
+            let max_deg = cmp::min(MAX_LOG2_RADIX, log_n);
+            let (_pq_buffer, omegas_buffer) =
+                FFTKernel::<E>::setup_pq_omegas(program, &omega, n, max_deg)?;
 
-                src_buffer.write_from(0, &a)?;
-                let kernel = program.create_kernel("reverse_bits", n, None);
-                call_kernel!(kernel, &src_buffer, log_n)?;
+            src_buffer.write_from(0, &a)?;
+            let kernel = program.create_kernel("reverse_bits", n, None);
+            call_kernel!(kernel, &src_buffer, log_n)?;
 
-                for log_m in 0..log_n {
-                    let kernel = program.create_kernel("inplace_fft", n >> 1, None);
-                    call_kernel!(kernel, &src_buffer, &omegas_buffer, log_n, log_m)?;
-                }
+            for log_m in 0..log_n {
+                let kernel = program.create_kernel("inplace_fft", n >> 1, None);
+                call_kernel!(kernel, &src_buffer, &omegas_buffer, log_n, log_m)?;
+            }
 
-                src_buffer.read_into(0, a)?;
+            src_buffer.read_into(0, a)?;
 
-                Ok(a)
-            }).wait().unwrap()?;
+            Ok(a)
+        }).wait().unwrap()?;
         Ok(())
     }
 
@@ -204,36 +202,36 @@ impl<E> FFTKernel<E>
     /// * `lgn` - Specifies log2 of number of elements
     pub fn distribute_powers(a: &'static mut [<E as blstrs::ScalarEngine>::Fr], g: &E::Fr, lgn: u32) -> GPUResult<()> {
         let gl = *g;
-        let result =
-            scheduler::schedule(move |program| -> GPUResult<&mut [E::Fr]>{
-                let n = 1u32 << lgn;
-                info!(
-                    "Running powers distribution of {} elements on {}(bus_id: {})...",
-                    n,
-                    program.device().name(),
-                    program.device().bus_id().unwrap()
-                );
 
-                let mut src_buffer = program.create_buffer::<E::Fr>(n as usize)?;
-                src_buffer.write_from(0, &a)?;
+        scheduler::schedule(move |program| -> GPUResult<&mut [E::Fr]>{
+            let n = 1u32 << lgn;
+            info!(
+                "Running powers distribution of {} elements on {}(bus_id: {})...",
+                n,
+                program.device().name(),
+                program.device().bus_id().unwrap()
+            );
 
-                let g_arg = structs::PrimeFieldStruct::<E::Fr>(gl);
+            let mut src_buffer = program.create_buffer::<E::Fr>(n as usize)?;
+            src_buffer.write_from(0, &a)?;
 
-                let kernel = program.create_kernel(
-                    "distribute_powers",
-                    utils::get_core_count(&program.device()),
-                    None,
-                );
-                call_kernel!(
-                    kernel,
-                    &src_buffer,
-                    n,
-                    g_arg)?;
+            let g_arg = structs::PrimeFieldStruct::<E::Fr>(gl);
 
-                src_buffer.read_into(0, a)?;
+            let kernel = program.create_kernel(
+                "distribute_powers",
+                utils::get_core_count(&program.device()),
+                None,
+            );
+            call_kernel!(
+                kernel,
+                &src_buffer,
+                n,
+                g_arg)?;
 
-                Ok(a)
-            }).wait().unwrap()?;
+            src_buffer.read_into(0, a)?;
+
+            Ok(a)
+        }).wait().unwrap()?;
         Ok(())
     }
 
@@ -242,45 +240,44 @@ impl<E> FFTKernel<E>
     /// * `lgn` - Specifies log2 of number of elements
     /// * `sub` - Set true if you want subtraction instead of multiplication
     pub fn mul_sub(a: &'static mut [<E as blstrs::ScalarEngine>::Fr], b: &'static [<E as blstrs::ScalarEngine>::Fr], n: usize, sub: bool) -> GPUResult<()> {
-        let result =
-            scheduler::schedule(move |program| -> GPUResult<&mut [E::Fr]>{
-                if sub {
-                    info!(
-                        "Running sub of {} elements on {} (bus_id: {})...",
-                        a.len(),
-                        program.device().name(),
-                        program.device().bus_id().unwrap()
-                    );
-                } else {
-                    info!(
-                        "Running mul of {} elements on {} (bus_id: {})...",
-                        a.len(),
-                        program.device().name(),
-                        program.device().bus_id().unwrap()
-                    );
-                }
-
-                let mut src_buffer = program.create_buffer::<E::Fr>(a.len())?;
-                let mut dst_buffer = program.create_buffer::<E::Fr>(b.len())?;
-
-                src_buffer.write_from(0, &a)?;
-                dst_buffer.write_from(0, &b)?;
-
-                let kernel = program.create_kernel(
-                    if sub { "sub" } else { "mul" },
-                    n,
-                    None,
+        scheduler::schedule(move |program| -> GPUResult<&mut [E::Fr]>{
+            if sub {
+                info!(
+                    "Running sub of {} elements on {} (bus_id: {})...",
+                    a.len(),
+                    program.device().name(),
+                    program.device().bus_id().unwrap()
                 );
-                call_kernel!(
-                    kernel,
-                    &src_buffer,
-                    &dst_buffer,
-                    n as u32)?;
+            } else {
+                info!(
+                    "Running mul of {} elements on {} (bus_id: {})...",
+                    a.len(),
+                    program.device().name(),
+                    program.device().bus_id().unwrap()
+                );
+            }
 
-                src_buffer.read_into(0, a)?;
+            let mut src_buffer = program.create_buffer::<E::Fr>(a.len())?;
+            let mut dst_buffer = program.create_buffer::<E::Fr>(b.len())?;
 
-                Ok(a)
-            }).wait().unwrap()?;
+            src_buffer.write_from(0, &a)?;
+            dst_buffer.write_from(0, &b)?;
+
+            let kernel = program.create_kernel(
+                if sub { "sub" } else { "mul" },
+                n,
+                None,
+            );
+            call_kernel!(
+                kernel,
+                &src_buffer,
+                &dst_buffer,
+                n as u32)?;
+
+            src_buffer.read_into(0, a)?;
+
+            Ok(a)
+        }).wait().unwrap()?;
         Ok(())
     }
 }
