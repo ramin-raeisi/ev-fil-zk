@@ -6,16 +6,18 @@ use groupy::{CurveAffine, CurveProjective};
 use log::{error, info};
 use rust_gpu_tools::*;
 use std::any::TypeId;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 use futures::future::Future;
 use rayon::iter::{ParallelIterator, IntoParallelRefIterator};
 use crate::gpu::scheduler;
+
+use crate::multiexp::{multiexp_cpu}; // for cpu-based parallel computations
 
 const MAX_WINDOW_SIZE: usize = 10;
 const LOCAL_WORK_SIZE: usize = 256;
 const MEMORY_PADDING: f64 = 0.2f64;
 // Let 20% of GPU memory be free
-const CPU_UTILIZATION: f64 = 0.875;
+const CPU_UTILIZATION: f64 = 0.1;
 // Increase GPU memory usage via inner loop, 1 for default value
 const CHUNK_SIZE_MULTIPLIER: f64 = 2.0;
 
@@ -31,6 +33,18 @@ pub fn get_cpu_utilization() -> f64 {
         .unwrap_or(CPU_UTILIZATION)
         .max(0f64)
         .min(1f64)
+}
+
+pub fn ger_max_window() -> usize {
+    std::env::var("FIL_ZK_MAX_WINDOW")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FIL_ZK_MAX_WINDOW! Defaulting to {}", MAX_WINDOW_SIZE);
+                Ok(MAX_WINDOW_SIZE)
+            }
+        })
+        .unwrap_or(MAX_WINDOW_SIZE)
 }
 
 // Multiexp kernel for a single GPU
@@ -58,11 +72,11 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
     let lower_bound = (((exp_bits * n) as f64) / ((work_size) as f64)).ln();
     for w in 0..MAX_WINDOW_SIZE {
         if (w as f64) + (w as f64).ln() > lower_bound {
+            info!("calculated window size: {}", w);
             return w;
         }
     }
-
-    MAX_WINDOW_SIZE
+    ger_max_window()
 }
 
 fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usize) -> usize {
@@ -132,6 +146,9 @@ impl<E> MultiexpKernel<E>
         let exp_bits = exp_size::<E>() * 8;
         let max_n = calc_chunk_size::<E>(program.device().memory(), work_size, over_g2);
         let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
+        if max_n < best_n {
+            info!("the best chunks size > max chunk size. Probably, settings are wrong for this machine");
+        }
         std::cmp::min(max_n, best_n)
     }
 
@@ -247,6 +264,13 @@ impl<E> MultiexpKernel<E>
             return Err(GPUError::Simple("Only E::G1 and E::G2 are supported!"));
         };
 
+        // use cpu for parallel calculations
+        let mut cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
+        if n < 10000 {
+            cpu_n = n;
+        }
+        let n = n - cpu_n;
+
         for p in scheduler::DEVICE_POOL.devices.iter() {
             let data = p.lock().unwrap();
             let cur: usize = MultiexpKernel::<E>::chunk_size_of(&data,
@@ -263,35 +287,80 @@ impl<E> MultiexpKernel<E>
         let chunks_amount: usize = ((n as f64) / (chunk_size as f64)).ceil() as usize;
         let chunk_idxs: Vec<usize> = (0..chunks_amount).collect();
 
-        let result = chunk_idxs.par_iter()
-            .map(|chunk_idx| {
-                let start_idx = chunk_idx * chunk_size;
-                let chunk_size = std::cmp::min(chunk_size, n - start_idx);
-                let bases = bases.clone();
-                let exps = exps.clone();
-                scheduler::schedule(move |prog| -> GPUResult<<G as CurveAffine>::Projective> {
-                    MultiexpKernel::<E>::multiexp_on(
-                        prog,
-                        bases,
-                        exps,
-                        chunk_size,
-                        utils::best_work_size(&prog.device(), over_g2),
-                        // Bases are skipped by `self.1` elements, when converted from (Arc<Vec<G>>, usize) to Source
-                        // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
-                        start_idx + skip,
-                        start_idx,
-                    )
-                })
-            })
-            .map(|future| future.wait().unwrap())
-            .collect::<GPUResult<Vec<<G as CurveAffine>::Projective>>>()?
-            .iter()
-            .fold(<G as CurveAffine>::Projective::zero(), |mut a, b| {
-                a.add_assign(b);
-                a
+        rayon::scope(|s| {
+            // concurrent computing
+            let (tx_gpu, rx_gpu) = mpsc::channel();
+            let (tx_cpu, rx_cpu) = mpsc::channel();
+
+            let cpu_bases = bases.clone();
+            let cpu_exps = exps.clone();
+
+            // GPU calculations
+            s.spawn(move |_| {
+                let mut result = <G as CurveAffine>::Projective::zero();
+                if n > 0 {
+                    result = chunk_idxs.par_iter()
+                    .map(|chunk_idx| {
+                        let start_idx = chunk_idx * chunk_size;
+                        let chunk_size = std::cmp::min(chunk_size, n - start_idx);
+                        let bases = bases.clone();
+                        let exps = exps.clone();
+                        scheduler::schedule(move |prog| -> GPUResult<<G as CurveAffine>::Projective> {
+                            MultiexpKernel::<E>::multiexp_on(
+                                prog,
+                                bases,
+                                exps,
+                                chunk_size,
+                                utils::best_work_size(&prog.device(), over_g2),
+                                // Bases are skipped by `self.1` elements, when converted from (Arc<Vec<G>>, usize) to Source
+                                // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
+                                start_idx + skip,
+                                start_idx,
+                            )
+                        })
+                    })
+                    .map(|future| future.wait().unwrap())
+                    .collect::<GPUResult<Vec<<G as CurveAffine>::Projective>>>().unwrap()
+                    .iter()
+                    .fold(<G as CurveAffine>::Projective::zero(), |mut a, b| {
+                        a.add_assign(b);
+                        a
+                    });
+                }
+
+                tx_gpu.send(result).unwrap();
             });
 
-        Ok(result)
+            // CPU calculations
+            s.spawn(move |_| {
+                info!("CPU run multiexp over {} elements", cpu_n);
+
+                let mut cpu_acc = <G as CurveAffine>::Projective::zero();
+
+                if cpu_n > 0 {
+                    cpu_acc = multiexp_cpu(
+                        cpu_bases.clone(),
+                        cpu_exps.clone(),
+                        cpu_n,
+                        n + skip, // use last values of the vec
+                        n,
+                    ).unwrap();
+                }
+
+                tx_cpu.send(cpu_acc).unwrap();
+            });
+
+            let mut acc = <G as CurveAffine>::Projective::zero();
+
+            // waiting results...
+            let gpu_r = rx_gpu.recv().unwrap();
+            let cpu_r = rx_cpu.recv().unwrap();
+
+            acc.add_assign(&gpu_r);
+            acc.add_assign(&cpu_r);
+            
+            Ok(acc)
+        })
     }
 
     pub fn calibrate<G>(program: &opencl::Program, n: usize) -> GPUResult<usize>
