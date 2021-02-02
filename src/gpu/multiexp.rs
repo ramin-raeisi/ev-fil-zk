@@ -35,7 +35,7 @@ pub fn get_cpu_utilization() -> f64 {
         .min(1f64)
 }
 
-pub fn ger_max_window() -> usize {
+pub fn get_max_window() -> usize {
     std::env::var("FIL_ZK_MAX_WINDOW")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
@@ -76,7 +76,7 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
             return w;
         }
     }
-    ger_max_window()
+    get_max_window()
 }
 
 fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usize) -> usize {
@@ -97,7 +97,7 @@ fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usiz
         .ceil() as usize
 }
 
-fn calc_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
+fn calc_max_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
     where
         E: Engine
 {
@@ -143,8 +143,12 @@ impl<E> MultiexpKernel<E>
     }
 
     fn chunk_size_of(program: &opencl::Program, work_size: usize, over_g2: bool) -> usize {
+        if program.device().memory() > 20000000000  { // hardcoded value for some GPU models
+            return 67108864;
+        }
+        
         let exp_bits = exp_size::<E>() * 8;
-        let max_n = calc_chunk_size::<E>(program.device().memory(), work_size, over_g2);
+        let max_n = calc_max_chunk_size::<E>(program.device().memory(), work_size, over_g2);
         let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
         if max_n < best_n {
             info!("the best chunks size > max chunk size. Probably, settings are wrong for this machine");
@@ -160,6 +164,7 @@ impl<E> MultiexpKernel<E>
         work_size: usize,
         start_idx_bases: usize,
         start_idx_exps: usize,
+        over_g2: bool,
     ) -> GPUResult<<G as CurveAffine>::Projective>
         where
             G: CurveAffine,
@@ -170,8 +175,15 @@ impl<E> MultiexpKernel<E>
         let exps = &exps[start_idx_exps .. start_idx_exps + n];
 
         let exp_bits = exp_size::<E>() * 8;
+        let mut window_size = calc_window_size(n as usize, exp_bits, work_size);
 
-        let window_size = calc_window_size(n as usize, exp_bits, work_size);
+        if program.device().memory() > 20000000000  { // hardcoded value for some GPU models
+            window_size = match over_g2 {
+                true => 10,
+                false => 12
+            };
+        }
+
         let num_windows = ((exp_bits as f64) / (window_size as f64)).ceil() as usize;
         let num_groups = calc_num_groups(work_size, num_windows);
         let bucket_len = 1 << window_size;
@@ -305,6 +317,7 @@ impl<E> MultiexpKernel<E>
                         let chunk_size = std::cmp::min(chunk_size, n - start_idx);
                         let bases = bases.clone();
                         let exps = exps.clone();
+
                         scheduler::schedule(move |prog| -> GPUResult<<G as CurveAffine>::Projective> {
                             MultiexpKernel::<E>::multiexp_on(
                                 prog,
@@ -316,6 +329,7 @@ impl<E> MultiexpKernel<E>
                                 // https://github.com/zkcrypto/bellman/blob/10c5010fd9c2ca69442dc9775ea271e286e776d8/src/multiexp.rs#L38
                                 start_idx + skip,
                                 start_idx,
+                                over_g2,
                             )
                         })
                     })
@@ -389,7 +403,7 @@ impl<E> MultiexpKernel<E>
             let now = Instant::now();
             let bases = bases.clone();
             let exps = exps.clone();
-            Self::multiexp_on(program, bases, exps, n, best_work_size + 128, 0, 0)?;
+            Self::multiexp_on(program, bases, exps, n, best_work_size + 128, 0, 0, true)?;
             let dur = now.elapsed().as_secs() * 1000 as u64 + now.elapsed().subsec_millis() as u64;
             if best_dur.is_some() && dur > ((best_dur.unwrap() as f64) * 1.1f64) as u64 {
                 break;
