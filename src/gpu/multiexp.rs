@@ -17,7 +17,7 @@ const MAX_WINDOW_SIZE: usize = 10;
 const LOCAL_WORK_SIZE: usize = 256;
 const MEMORY_PADDING: f64 = 0.2f64;
 // Let 20% of GPU memory be free
-const CPU_UTILIZATION: f64 = 0.1;
+const CPU_UTILIZATION: f64 = 0.2;
 // Increase GPU memory usage via inner loop, 1 for default value
 const CHUNK_SIZE_MULTIPLIER: f64 = 2.0;
 
@@ -170,6 +170,8 @@ impl<E> MultiexpKernel<E>
             G: CurveAffine,
     {
         MultiexpKernel::<E>::ensure_curve()?;
+
+        let mut work_size = work_size;
         
         let bases = &bases[start_idx_bases .. start_idx_bases + n];
         let exps = &exps[start_idx_exps .. start_idx_exps + n];
@@ -177,11 +179,14 @@ impl<E> MultiexpKernel<E>
         let exp_bits = exp_size::<E>() * 8;
         let mut window_size = calc_window_size(n as usize, exp_bits, work_size);
 
-        if program.device().memory() > 20000000000  { // hardcoded value for some GPU models
+        let high_memory_device = program.device().memory() > 20000000000; // hardcoded value for some GPU models
+
+        if high_memory_device { 
             window_size = match over_g2 {
                 true => 10,
                 false => 12
             };
+            work_size = utils::get_core_count(&program.device());
         }
 
         let num_windows = ((exp_bits as f64) / (window_size as f64)).ceil() as usize;
