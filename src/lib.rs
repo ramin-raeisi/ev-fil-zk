@@ -434,6 +434,18 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
             "ConstraintSystem::extend must be implemented for types implementing ConstraintSystem"
         );
     }
+
+    // Create a vector of CSs with the same porperties
+    // Later these CSs can be aggregated to the one
+    // It allows to calculate synthesize-functions in parallel for several copies of the CS and later aggregate them
+    fn make_vector(&self, _size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        panic!("parallel functional (fn make_vector) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    // Aggregate all data from other to self
+    fn aggregate(&mut self, _other: Vec<Self::Root>) {
+        panic!("parallel functional (fn aggregate) in not implemented for {}", std::any::type_name::<Self>())
+    }
 }
 
 /// This is a "namespaced" constraint system which borrows a constraint system (pushing
@@ -506,6 +518,15 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
     fn get_root(&mut self) -> &mut Self::Root {
         self.0.get_root()
     }
+
+    fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        self.0.make_vector(size)
+    }
+
+    // Aggregate all data from other to self
+    fn aggregate(&mut self, other: Vec<Self::Root>) {
+        self.0.aggregate(other)
+    }
 }
 
 impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> Drop for Namespace<'a, E, CS> {
@@ -566,6 +587,15 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn get_root(&mut self) -> &mut Self::Root {
         (**self).get_root()
+    }
+
+    fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        (**self).make_vector(size)
+    }
+
+    // Aggregate all data from other to self
+    fn aggregate(&mut self, other: Vec<Self::Root>) {
+        (**self).aggregate(other)
     }
 }
 

@@ -238,6 +238,20 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             .extend(&other.input_assignment[1..]);
         self.aux_assignment.extend(other.aux_assignment);
     }
+
+    fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        let mut res = Vec::new();
+        for _ in 0..size {
+            res.push(Self::new());
+        }
+        Ok(res)
+    }
+
+    fn aggregate(&mut self, other: Vec<Self::Root>) {
+        for cs in other {
+            self.extend(cs);
+        }
+    }
 }
 
 pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
