@@ -242,7 +242,9 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
         let mut res = Vec::new();
         for _ in 0..size {
-            res.push(Self::new());
+            let mut new_cs = Self::new();
+            new_cs.alloc_input(|| "", || Ok(E::Fr::one()))?; // each CS has one
+            res.push(new_cs);
         }
         Ok(res)
     }
