@@ -593,7 +593,14 @@ mod tests {
                     }
                 }
 
+                let y = Fr::from_str("1").unwrap();
+                let y_var_ful = full_assignment.alloc(|| "y", || Ok(y.clone())).unwrap();
+                let y_var_part = partial_assignments[count / k - 1].alloc(|| "y", || Ok(y.clone())).unwrap();
+
                 base_partial.aggregate(partial_assignments);
+
+                full_assignment.enforce(|| "y_enforce", |lc| lc + y_var_ful, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + ProvingAssignment::<Bls12>::one());
+                base_partial.enforce(|| "y_enforce", |lc| lc + y_var_part, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + ProvingAssignment::<Bls12>::one());
                 assert_eq!(base_partial, full_assignment);
             }
         }
