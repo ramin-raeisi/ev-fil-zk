@@ -547,51 +547,54 @@ mod tests {
                 let count: usize = k * j;
 
                 let mut full_assignment = ProvingAssignment::<Bls12>::new();
-                full_assignment
-                    .alloc_input(|| "one", || Ok(Fr::one()))
-                    .unwrap();
 
-                let mut partial_assignments = Vec::with_capacity(count / k);
+                let mut base_partial = ProvingAssignment::<Bls12>::new();
+
+                let provers = vec![&mut full_assignment, &mut base_partial];
+                let x = Fr::from_str("5").unwrap();
+                let mut x_sqr = x.clone();
+                x_sqr.mul_assign(&x);
+                for p in provers {
+                    p.alloc_input(|| "one", || Ok(Fr::one()))
+                        .unwrap();
+                    let x_var = p.alloc_input(|| "x_val", || Ok(x.clone())).unwrap();
+                    let x_sqr_var = p.alloc(|| "x_sqr", || Ok(x_sqr.clone())).unwrap();
+                    p.enforce(|| "x_squaring", |lc| lc + x_var, |lc| lc + x_var, |lc| lc + x_sqr_var);
+                }
+                
+                let mut partial_assignments = base_partial.make_vector(count / k).unwrap();
                 for i in 0..count {
-                    if i % k == 0 {
-                        let mut p = ProvingAssignment::new();
-                        p.alloc_input(|| "one", || Ok(Fr::one())).unwrap();
-                        partial_assignments.push(p)
-                    }
-
                     let index: usize = i / k;
                     let partial_assignment = &mut partial_assignments[index];
 
+                    // take a random element, dobule it and verify results
                     if rng.gen() {
                         let el = Fr::random(&mut rng);
-                        full_assignment
-                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el.clone()))
-                            .unwrap();
-                        partial_assignment
-                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el))
-                            .unwrap();
-                    }
 
-                    if rng.gen() {
-                        let el = Fr::random(&mut rng);
-                        full_assignment
+                        let el_var_ful = full_assignment
                             .alloc_input(|| format!("alloc_input:{},{}", i, k), || Ok(el.clone()))
                             .unwrap();
-                        partial_assignment
-                            .alloc_input(|| format!("alloc_input:{},{}", i, k), || Ok(el))
+                        let el_var_part = partial_assignment
+                            .alloc_input(|| format!("alloc_input:{},{}", i, k), || Ok(el.clone()))
                             .unwrap();
+
+                        let mut el_double = el.clone();
+                        el_double.add_assign(&el);
+
+                        let el_double_var_ful = full_assignment
+                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el_double.clone()))
+                            .unwrap();
+                        let el_double_var_part = partial_assignment
+                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el_double.clone()))
+                            .unwrap();
+
+                        full_assignment.enforce(|| "el_double", |lc| lc + el_var_ful + el_var_ful, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + el_double_var_ful);
+                        partial_assignment.enforce(|| "el_double", |lc| lc + el_var_part + el_var_part, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + el_double_var_part);
                     }
-
-                    // TODO: LinearCombination
                 }
 
-                let mut combined = ProvingAssignment::new();
-                combined.alloc_input(|| "one", || Ok(Fr::one())).unwrap();
-
-                for assignment in partial_assignments.into_iter() {
-                    combined.extend(assignment);
-                }
-                assert_eq!(combined, full_assignment);
+                base_partial.aggregate(partial_assignments);
+                assert_eq!(base_partial, full_assignment);
             }
         }
     }

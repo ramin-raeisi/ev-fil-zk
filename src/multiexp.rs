@@ -494,7 +494,7 @@ where
     (Arc::new(exps), n)
 }
 
-#[cfg(any(feature = "pairing", feature = "blst"))]
+/*#[cfg(any(feature = "pairing", feature = "blst"))]
 #[test]
 fn test_with_bls12() {
     fn naive_multiexp<G: CurveAffine>(
@@ -542,7 +542,7 @@ fn test_with_bls12() {
     println!("Fast: {}", now.elapsed().as_millis());
 
     assert_eq!(naive, fast);
-}
+}*/
 
 /*#[cfg(feature = "gpu")]
 #[test]
