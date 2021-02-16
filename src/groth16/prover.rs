@@ -254,6 +254,26 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             self.extend(cs);
         }
     }
+
+    fn align_variable(&mut self, v: &mut Variable) {
+        match v {
+            Variable(Index::Input(i)) => {
+                *v = Variable(Index::Input(self.input_assignment.len() + *i - 1));
+            }
+            Variable(Index::Aux(i)) => {
+                *v = Variable(Index::Aux(self.aux_assignment.len() + *i));
+            }
+        }
+    }
+
+    fn aggregate_with_align(&mut self, other: Vec<Self::Root>, vars: &mut Vec<Variable>) {
+        assert_eq!(other.len(), vars.len());
+        for (cs, v) in other.into_iter()
+            .zip(vars.iter_mut()) {
+                self.align_variable(v);
+                self.aggregate(vec![cs]);
+            }
+    }
 }
 
 pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
@@ -593,14 +613,23 @@ mod tests {
                     }
                 }
 
-                let y = Fr::from_str("1").unwrap();
+                let y = Fr::from_str("4").unwrap();
                 let y_var_ful = full_assignment.alloc(|| "y", || Ok(y.clone())).unwrap();
-                let y_var_part = partial_assignments[count / k - 1].alloc(|| "y", || Ok(y.clone())).unwrap();
+                let pa_n = partial_assignments.len();
+                let mut y_var_part = partial_assignments[pa_n - 1].alloc(|| "y", || Ok(y.clone())).unwrap();
 
-                base_partial.aggregate(partial_assignments);
+                let z = Fr::from_str("2").unwrap();
+                let z_var_ful = full_assignment.alloc_input(|| "z", || Ok(z.clone())).unwrap();
+                let mut z_var_part = partial_assignments[pa_n - 1].alloc_input(|| "z", || Ok(z.clone())).unwrap();
 
-                full_assignment.enforce(|| "y_enforce", |lc| lc + y_var_ful, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + ProvingAssignment::<Bls12>::one());
-                base_partial.enforce(|| "y_enforce", |lc| lc + y_var_part, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + ProvingAssignment::<Bls12>::one());
+                let last_partial = partial_assignments.split_off(pa_n - 1);
+                base_partial.aggregate(partial_assignments); // aggregate all CSs exept the last one
+                base_partial.align_variable(&mut y_var_part); // align variables form the last CS
+                base_partial.align_variable(&mut z_var_part);
+                base_partial.aggregate(last_partial);
+
+                full_assignment.enforce(|| "y_enforce", |lc| lc + y_var_ful, |lc| lc + z_var_ful, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
+                base_partial.enforce(|| "y_enforce", |lc| lc + y_var_part, |lc| lc + z_var_part, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
                 assert_eq!(base_partial, full_assignment);
             }
         }

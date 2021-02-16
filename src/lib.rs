@@ -446,6 +446,14 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
     fn aggregate(&mut self, _other: Vec<Self::Root>) {
         panic!("parallel functional (fn aggregate) in not implemented for {}", std::any::type_name::<Self>())
     }
+
+    fn align_variable(&mut self, _vars: &mut Variable) {
+        panic!("parallel functional (fn align_variable) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn aggregate_with_align(&mut self, _other: Vec<Self::Root>, _vars: &mut Vec<Variable>) {
+        panic!("parallel functional (fn aggregate_with_align) in not implemented for {}", std::any::type_name::<Self>())
+    }
 }
 
 /// This is a "namespaced" constraint system which borrows a constraint system (pushing
