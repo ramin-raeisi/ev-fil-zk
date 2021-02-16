@@ -438,21 +438,12 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
     // Create a vector of CSs with the same porperties
     // Later these CSs can be aggregated to the one
     // It allows to calculate synthesize-functions in parallel for several copies of the CS and later aggregate them
-    fn make_vector(&self, _size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+    fn make_vector(&self, _size: usize) -> Result<Vec<Self>, SynthesisError> {
         panic!("parallel functional (fn make_vector) in not implemented for {}", std::any::type_name::<Self>())
     }
 
-    // Aggregate all data from other to self
-    fn aggregate(&mut self, _other: Vec<Self::Root>) {
-        panic!("parallel functional (fn aggregate) in not implemented for {}", std::any::type_name::<Self>())
-    }
-
-    fn align_variable(&mut self, _vars: &mut Variable) {
+    fn align_variable(&mut self, _v: &mut Variable) {
         panic!("parallel functional (fn align_variable) in not implemented for {}", std::any::type_name::<Self>())
-    }
-
-    fn aggregate_with_align(&mut self, _other: Vec<Self::Root>, _vars: &mut Vec<Variable>) {
-        panic!("parallel functional (fn aggregate_with_align) in not implemented for {}", std::any::type_name::<Self>())
     }
 }
 
@@ -526,14 +517,9 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
     fn get_root(&mut self) -> &mut Self::Root {
         self.0.get_root()
     }
-
-    fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
-        self.0.make_vector(size)
-    }
-
-    // Aggregate all data from other to self
-    fn aggregate(&mut self, other: Vec<Self::Root>) {
-        self.0.aggregate(other)
+    
+    fn align_variable(&mut self, v: &mut Variable) {
+        self.0.align_variable(v);
     }
 }
 
@@ -597,13 +583,8 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
         (**self).get_root()
     }
 
-    fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
-        (**self).make_vector(size)
-    }
-
-    // Aggregate all data from other to self
-    fn aggregate(&mut self, other: Vec<Self::Root>) {
-        (**self).aggregate(other)
+    fn align_variable(&mut self, v: &mut Variable) {
+        (**self).align_variable(v);
     }
 }
 

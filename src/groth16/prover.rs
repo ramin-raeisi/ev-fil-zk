@@ -239,7 +239,7 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.aux_assignment.extend(other.aux_assignment);
     }
 
-    fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+    fn make_vector(&self, size: usize) -> Result<Vec<Self>, SynthesisError> {
         let mut res = Vec::new();
         for _ in 0..size {
             let mut new_cs = Self::new();
@@ -247,12 +247,6 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             res.push(new_cs);
         }
         Ok(res)
-    }
-
-    fn aggregate(&mut self, other: Vec<Self::Root>) {
-        for cs in other {
-            self.extend(cs);
-        }
     }
 
     fn align_variable(&mut self, v: &mut Variable) {
@@ -264,15 +258,6 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
                 *v = Variable(Index::Aux(self.aux_assignment.len() + *i));
             }
         }
-    }
-
-    fn aggregate_with_align(&mut self, other: Vec<Self::Root>, vars: &mut Vec<Variable>) {
-        assert_eq!(other.len(), vars.len());
-        for (cs, v) in other.into_iter()
-            .zip(vars.iter_mut()) {
-                self.align_variable(v);
-                self.aggregate(vec![cs]);
-            }
     }
 }
 
@@ -622,11 +607,14 @@ mod tests {
                 let z_var_ful = full_assignment.alloc_input(|| "z", || Ok(z.clone())).unwrap();
                 let mut z_var_part = partial_assignments[pa_n - 1].alloc_input(|| "z", || Ok(z.clone())).unwrap();
 
-                let last_partial = partial_assignments.split_off(pa_n - 1);
-                base_partial.aggregate(partial_assignments); // aggregate all CSs exept the last one
+                let mut last_partial_vec = partial_assignments.split_off(pa_n - 1);
+                let last_partial = last_partial_vec.remove(0);
+                for pa in partial_assignments { // aggregate all CSs exept the last one
+                    base_partial.extend(pa);
+                }
                 base_partial.align_variable(&mut y_var_part); // align variables form the last CS
                 base_partial.align_variable(&mut z_var_part);
-                base_partial.aggregate(last_partial);
+                base_partial.extend(last_partial);
 
                 full_assignment.enforce(|| "y_enforce", |lc| lc + y_var_ful, |lc| lc + z_var_ful, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
                 base_partial.enforce(|| "y_enforce", |lc| lc + y_var_part, |lc| lc + z_var_part, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
