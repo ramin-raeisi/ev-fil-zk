@@ -535,6 +535,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         self.0.aggregate(other)
     }
+
+    fn align_variable(&mut self, v: &mut Variable) {
+        self.0.align_variable(v);
+    }
 }
 
 impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> Drop for Namespace<'a, E, CS> {
@@ -604,6 +608,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
     // Aggregate all data from other to self
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         (**self).aggregate(other)
+    }
+
+    fn align_variable(&mut self, v: &mut Variable) {
+        (**self).align_variable(v);
     }
 }
 
