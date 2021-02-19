@@ -191,6 +191,13 @@ impl DensityTracker {
         // Since any needed adjustments to total densities have been made, just sum the totals and keep the sum.
         self.total_density += other.total_density;
     }
+
+    pub fn deallocate(&mut self, idx: usize) {
+        if !self.bv.get(idx).unwrap() {
+            self.bv.set(idx, false);
+            self.total_density -= 1;
+        }
+    }
 }
 
 pub fn multiexp_cpu<G>(

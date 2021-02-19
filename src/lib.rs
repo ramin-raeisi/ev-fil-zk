@@ -447,12 +447,12 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn aggregate) in not implemented for {}", std::any::type_name::<Self>())
     }
 
-    fn align_variable(&mut self, _vars: &mut Variable) {
+    fn align_variable(&mut self, _v: &mut Variable) {
         panic!("parallel functional (fn align_variable) in not implemented for {}", std::any::type_name::<Self>())
     }
 
-    fn aggregate_with_align(&mut self, _other: Vec<Self::Root>, _vars: &mut Vec<Variable>) {
-        panic!("parallel functional (fn aggregate_with_align) in not implemented for {}", std::any::type_name::<Self>())
+    fn deallocate(&mut self, _v: Variable) -> Result<(), SynthesisError> {
+        panic!("parallel functional (fn deallocate) in not implemented for {}", std::any::type_name::<Self>())
     }
 }
 
@@ -539,6 +539,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
     fn align_variable(&mut self, v: &mut Variable) {
         self.0.align_variable(v);
     }
+
+    fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
+        self.0.deallocate(v)
+    }
 }
 
 impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> Drop for Namespace<'a, E, CS> {
@@ -612,6 +616,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn align_variable(&mut self, v: &mut Variable) {
         (**self).align_variable(v);
+    }
+
+    fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
+        (**self).deallocate(v)
     }
 }
 

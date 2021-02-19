@@ -266,13 +266,18 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         }
     }
 
-    fn aggregate_with_align(&mut self, other: Vec<Self::Root>, vars: &mut Vec<Variable>) {
-        assert_eq!(other.len(), vars.len());
-        for (cs, v) in other.into_iter()
-            .zip(vars.iter_mut()) {
-                self.align_variable(v);
-                self.aggregate(vec![cs]);
+    fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
+        match v {
+            Variable(Index::Input(i)) => {
+                self.b_input_density.deallocate(i);
             }
+            Variable(Index::Aux(i)) => {
+                self.a_aux_density.deallocate(i);
+                self.b_aux_density.deallocate(i);
+            }
+        }
+
+        Ok(())
     }
 }
 
