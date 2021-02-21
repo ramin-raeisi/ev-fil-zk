@@ -10,6 +10,8 @@ use std::sync::{mpsc, Arc};
 use futures::future::Future;
 use rayon::iter::{ParallelIterator, IntoParallelRefIterator};
 use crate::gpu::scheduler;
+use std::time::{Instant};
+use super::super::settings;
 
 use crate::multiexp::{multiexp_cpu}; // for cpu-based parallel computations
 
@@ -17,11 +19,11 @@ const MAX_WINDOW_SIZE: usize = 10;
 const LOCAL_WORK_SIZE: usize = 256;
 const MEMORY_PADDING: f64 = 0.2f64;
 // Let 20% of GPU memory be free
-const CPU_UTILIZATION: f64 = 0.2;
+//const CPU_UTILIZATION: f64 = 0.2;
 // Increase GPU memory usage via inner loop, 1 for default value
 const CHUNK_SIZE_MULTIPLIER: f64 = 2.0;
 
-pub fn get_cpu_utilization() -> f64 {
+/*pub fn get_cpu_utilization() -> f64 {
     std::env::var("FIL_ZK_CPU_UTILIZATION")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
@@ -33,7 +35,8 @@ pub fn get_cpu_utilization() -> f64 {
         .unwrap_or(CPU_UTILIZATION)
         .max(0f64)
         .min(1f64)
-}
+        
+}*/
 
 pub fn get_max_window() -> usize {
     std::env::var("FIL_ZK_MAX_WINDOW")
@@ -282,7 +285,9 @@ impl<E> MultiexpKernel<E>
         };
 
         // use cpu for parallel calculations
-        let mut cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
+        //let mut cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
+        let cpu_util = settings::FILSETTINGS.cpu_utilization;
+        let mut cpu_n = ((n as f64) * cpu_util) as usize;
         if n < 10000 {
             cpu_n = n;
         }
@@ -420,4 +425,5 @@ impl<E> MultiexpKernel<E>
         println!("Best: {}", best_work_size);
         Ok(best_work_size)
     }
+   
 }
