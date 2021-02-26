@@ -6,7 +6,7 @@ pub use self::error::*;
 mod sources;
 
 #[cfg(feature = "gpu")]
-mod scheduler;
+pub mod scheduler;
 
 #[cfg(feature = "gpu")]
 pub use scheduler::*;

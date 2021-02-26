@@ -1,7 +1,7 @@
 use bit_vec::{self, BitVec};
 use ff::{Field, PrimeField, PrimeFieldRepr, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
-use log::error;
+use log::{error};
 use rayon::prelude::*;
 use std::io;
 use std::iter;
@@ -193,6 +193,95 @@ impl DensityTracker {
     }
 }
 
+pub fn multiexp_cpu<G>(
+    bases: Arc<Vec<G>>,
+    exps: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
+    n: usize,
+    start_idx_bases: usize,
+    start_idx_exps: usize,
+) -> Result<<G as CurveAffine>::Projective, SynthesisError>
+    where G: CurveAffine,
+{
+    let c = if n < 32 {
+        3u32
+    } else {
+        (f64::from(n as u32)).ln().ceil() as u32
+    };
+
+    // Perform this region of the multiexp
+    let this = move |bases: Arc<Vec<G>>,
+                     exps: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
+                     skip: u32,
+                     n: usize,
+                     start_idx_bases: usize,
+                     start_idx_exps: usize|
+                     -> Result<_, SynthesisError> {
+        // Accumulate the result
+        let mut acc = G::Projective::zero();
+
+        // Create space for the buckets
+        let mut buckets = vec![<G as CurveAffine>::Projective::zero(); (1 << c) - 1];
+
+        let zero = <G::Engine as ScalarEngine>::Fr::zero().into_repr();
+        let one = <G::Engine as ScalarEngine>::Fr::one().into_repr();
+
+        // only the first round uses this
+        let handle_trivial = skip == 0;
+
+        // Sort the bases into buckets
+        for i in 0..n {
+            let exp_value = exps[start_idx_exps + i];
+            let base_value = bases[start_idx_bases + i];
+            if exp_value == one {
+                if handle_trivial {
+                    acc.add_assign_mixed(&base_value);
+                }
+            } else {
+                if exp_value != zero {
+                    let mut exp = exp_value;
+                    exp.shr(skip);
+                    let exp = exp.as_ref()[0] % (1 << c);
+
+                    if exp != 0 {
+                        buckets[(exp - 1) as usize].add_assign_mixed(&base_value);
+                    }
+                }
+            }
+        }
+
+        // Summation by parts
+        // e.g. 3a + 2b + 1c = a +
+        //                    (a) + b +
+        //                    ((a) + b) + c
+        let mut running_sum = G::Projective::zero();
+        for exp in buckets.into_iter().rev() {
+            running_sum.add_assign(&exp);
+            acc.add_assign(&running_sum);
+        }
+
+        Ok(acc)
+    };
+
+    let parts = (0..<G::Engine as ScalarEngine>::Fr::NUM_BITS)
+        .step_by(c as usize)
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .map(|skip| this(bases.clone(), exps.clone(), skip, n, start_idx_bases, start_idx_exps))
+        .collect::<Vec<Result<_, _>>>();
+
+    parts
+        .into_iter()
+        .rev()
+        .try_fold(<G as CurveAffine>::Projective::zero(), |mut acc, part| {
+            for _ in 0..c {
+                acc.double();
+            }
+
+            acc.add_assign(&part?);
+            Ok(acc)
+        })
+}
+
 fn multiexp_inner<Q, D, G, S>(
     bases: S,
     density_map: D,
@@ -343,6 +432,66 @@ pub fn multiexp<Q, D, G>(
     rayon_core::scope(|s| {
         Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(multiexp_inner(bases, density_map, exponents, c).unwrap()))))
     })
+}
+
+// skipdensity
+pub fn multiexp_skipdensity<G>(
+    bases: Arc<Vec<G>>,
+    bases_skip: usize,
+    exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
+    n: usize,
+    devices: Option<&gpu::DevicePool>,
+) -> Box<dyn Future<Item=<G as CurveAffine>::Projective, Error=SynthesisError> + Send>
+where
+    G: CurveAffine,
+    G::Engine: crate::bls::Engine,
+{
+    if let Some(ref _devices) = devices {
+        let bss = bases.clone();
+        let skip = bases_skip;
+        match gpu::MultiexpKernel::<G::Engine>::multiexp(
+            bss,
+            exponents.clone(),
+            skip,
+            n,
+        ) {
+            Ok(p) => {
+                return rayon_core::scope(|s| {
+                    Box::new(s.spawn_future(lazy(move || Ok::<_, SynthesisError>(p))))
+                });
+            }
+            Err(e) => {
+                error!("GPU Multiexp failed! Error: {}", e);
+            }
+        }
+    }
+
+    rayon_core::scope(|s| {
+        Box::new(s.spawn_future(lazy(move || Err(SynthesisError::GPUError(gpu::GPUError::GPUDisabled)))))
+    })
+}
+
+// density map filter for exponents
+pub fn density_filter<Q, D, G>(
+    _bases: Arc<Vec<G>>,
+    density_map: D,
+    exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>
+) ->  (Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>, usize)
+where
+    for<'a> &'a Q: QueryDensity,
+    D: Send + Sync + 'static + Clone + AsRef<Q>,
+    G: CurveAffine,
+    G::Engine: crate::bls::Engine,
+{
+    let mut exps = vec![exponents[0]; exponents.len()];
+    let mut n = 0;
+    for (&e, d) in exponents.iter().zip(density_map.as_ref().iter()) {
+        if d {
+            exps[n] = e;
+            n += 1;
+        }
+    }
+    (Arc::new(exps), n)
 }
 
 #[cfg(any(feature = "pairing", feature = "blst"))]
