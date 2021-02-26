@@ -15,13 +15,13 @@ use super::super::settings;
 
 use crate::multiexp::{multiexp_cpu}; // for cpu-based parallel computations
 
-const MAX_WINDOW_SIZE: usize = 10;
+//const MAX_WINDOW_SIZE: usize = 10;
 const LOCAL_WORK_SIZE: usize = 256;
 const MEMORY_PADDING: f64 = 0.2f64;
 // Let 20% of GPU memory be free
 //const CPU_UTILIZATION: f64 = 0.2;
 // Increase GPU memory usage via inner loop, 1 for default value
-const CHUNK_SIZE_MULTIPLIER: f64 = 2.0;
+//const CHUNK_SIZE_MULTIPLIER: f64 = 2.0;
 
 /*pub fn get_cpu_utilization() -> f64 {
     std::env::var("FIL_ZK_CPU_UTILIZATION")
@@ -39,15 +39,16 @@ const CHUNK_SIZE_MULTIPLIER: f64 = 2.0;
 }*/
 
 pub fn get_max_window() -> usize {
+    let max_window_cize = settings::FILSETTINGS.max_window_size as usize;
     std::env::var("FIL_ZK_MAX_WINDOW")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FIL_ZK_MAX_WINDOW! Defaulting to {}", MAX_WINDOW_SIZE);
-                Ok(MAX_WINDOW_SIZE)
+                error!("Invalid FIL_ZK_MAX_WINDOW! Defaulting to {}", max_window_cize);
+                Ok(max_window_cize)
             }
         })
-        .unwrap_or(MAX_WINDOW_SIZE)
+        .unwrap_or(max_window_cize)
 }
 
 // Multiexp kernel for a single GPU
@@ -73,7 +74,8 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
     // Thus we need to solve the following equation:
     // window_size + ln(window_size) = ln(exp_bits * n / (work_size))
     let lower_bound = (((exp_bits * n) as f64) / ((work_size) as f64)).ln();
-    for w in 0..MAX_WINDOW_SIZE {
+    let max_window_cize = settings::FILSETTINGS.max_window_size as usize;
+    for w in 0..max_window_cize {
         if (w as f64) + (w as f64).ln() > lower_bound {
             info!("calculated window size: {}", w);
             return w;
@@ -87,11 +89,11 @@ fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usiz
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FIL_ZK_CHUNK_SIZE_MULTIPLIER! Defaulting to {}", CHUNK_SIZE_MULTIPLIER);
-                Ok(CHUNK_SIZE_MULTIPLIER)
+                error!("Invalid FIL_ZK_CHUNK_SIZE_MULTIPLIER! Defaulting to {}", settings::FILSETTINGS.chunk_size_multiplier);
+                Ok(settings::FILSETTINGS.chunk_size_multiplier)
             }
         })
-        .unwrap_or(CHUNK_SIZE_MULTIPLIER);
+        .unwrap_or(settings::FILSETTINGS.chunk_size_multiplier);
 
     // Best chunk-size (N) can also be calculated using the same logic as calc_window_size:
     // n = e^window_size * window_size * work_size / exp_bits
@@ -115,7 +117,7 @@ fn calc_max_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
         .unwrap_or(MEMORY_PADDING)
         .max(1f64)
         .min(0f64);
-
+    let fil_max_window_cize = settings::FILSETTINGS.max_window_size as usize;
     //let aff_size = std::cmp::max(std::mem::size_of::<E::G1Affine>(), std::mem::size_of::<E::G2Affine>());
     let aff_size =
         if over_g2 { std::mem::size_of::<E::G2Affine>() } else { std::mem::size_of::<E::G1Affine>() };
@@ -123,9 +125,8 @@ fn calc_max_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
     //let proj_size = std::mem::size_of::<E::G1>() + std::mem::size_of::<E::G2>();
     let proj_size =
         if over_g2 { std::mem::size_of::<E::G2>() } else { std::mem::size_of::<E::G1>() };
-
     ((((mem as f64) * (1f64 - memory_padding)) as usize)
-        - (work_size * ((1 << MAX_WINDOW_SIZE) + 1) * proj_size))
+        - (work_size * ((1 <<fil_max_window_cize) + 1) * proj_size))
         / (2 * aff_size + exp_size)
 }
 
@@ -152,7 +153,8 @@ impl<E> MultiexpKernel<E>
         
         let exp_bits = exp_size::<E>() * 8;
         let max_n = calc_max_chunk_size::<E>(program.device().memory(), work_size, over_g2);
-        let best_n = calc_best_chunk_size(MAX_WINDOW_SIZE, work_size, exp_bits);
+        let fil_max_window_cize = settings::FILSETTINGS.max_window_size as usize;
+        let best_n = calc_best_chunk_size(fil_max_window_cize, work_size, exp_bits);
         if max_n < best_n {
             info!("the best chunks size > max chunk size. Probably, settings are wrong for this machine");
         }
