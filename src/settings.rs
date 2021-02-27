@@ -18,12 +18,20 @@ const SETTINGS_PATH: &str = "./fil-zk.config.toml";
 #[serde(default)]
 pub struct Settings {
     pub cpu_utilization: f64,
+    pub max_window_size: f64,
+    pub work_size_multiplier: f64,
+    pub chunk_size_multiplier: f64,
+    pub size: usize,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Settings {
             cpu_utilization: 0.2_f64,
+            max_window_size: 10_f64,
+            work_size_multiplier: 2_f64,
+            chunk_size_multiplier: 2_f64,
+            size: 4,
         }
     }
 }
@@ -34,7 +42,11 @@ impl Settings{
         let result: Settings;
         match data {
             Ok(d) => {
-                result = serde_json::de::from_slice(&d).unwrap();
+                let temp = serde_json::de::from_slice(&d);
+                match temp {
+                    Ok(temp) => {result = temp;}
+                    Err(e) => {result = Self::default();}
+                }
             }
             Err(e) => {
                 result = Self::default();
@@ -42,4 +54,14 @@ impl Settings{
         }
         Ok(result)
     }
+    pub fn set_value(&mut self, i: usize, a: f64) {
+        match i {
+            0 => self.cpu_utilization = a,
+            1 => self.max_window_size = a,
+            2 => self.work_size_multiplier = a,
+            3 => self.chunk_size_multiplier = a,
+            _ => panic!("Settings have not this field")
+        }
+    }
+
 }
