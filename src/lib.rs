@@ -454,6 +454,10 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
     fn deallocate(&mut self, _v: Variable) -> Result<(), SynthesisError> {
         panic!("parallel functional (fn deallocate) in not implemented for {}", std::any::type_name::<Self>())
     }
+
+    fn set_var_density(&mut self, _v: Variable, _density_value: bool) -> Result<(), SynthesisError> {
+        panic!("parallel functional (fn set_var_density) in not implemented for {}", std::any::type_name::<Self>())
+    }
 }
 
 /// This is a "namespaced" constraint system which borrows a constraint system (pushing
@@ -543,6 +547,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
     fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
         self.0.deallocate(v)
     }
+
+    fn set_var_density(&mut self, v: Variable, density_value: bool) -> Result<(), SynthesisError> {
+        self.0.set_var_density(v, density_value)
+    }
 }
 
 impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> Drop for Namespace<'a, E, CS> {
@@ -620,6 +628,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
         (**self).deallocate(v)
+    }
+
+    fn set_var_density(&mut self, v: Variable, density_value: bool) -> Result<(), SynthesisError> {
+        (**self).set_var_density(v, density_value)
     }
 }
 

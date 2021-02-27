@@ -193,9 +193,18 @@ impl DensityTracker {
     }
 
     pub fn deallocate(&mut self, idx: usize) {
-        if !self.bv.get(idx).unwrap() {
+        if self.bv.get(idx).unwrap() {
             self.bv.set(idx, false);
             self.total_density -= 1;
+        }
+    }
+
+    pub fn set_var_density(&mut self, idx: usize, value: bool) {
+        if value {
+            self.inc(idx);
+        }
+        else {
+            self.deallocate(idx);
         }
     }
 }

@@ -279,6 +279,19 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
 
         Ok(())
     }
+
+    fn set_var_density(&mut self, v: Variable, density_value: bool) -> Result<(), SynthesisError> {
+        match v {
+            Variable(Index::Input(i)) => {
+                self.b_input_density.set_var_density(i, density_value);
+            }
+            Variable(Index::Aux(i)) => {
+                self.a_aux_density.set_var_density(i, density_value);
+                self.b_aux_density.set_var_density(i, density_value);
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
