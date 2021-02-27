@@ -42,7 +42,11 @@ impl Settings{
         let result: Settings;
         match data {
             Ok(d) => {
-                result = serde_json::de::from_slice(&d).unwrap();
+                let temp = serde_json::de::from_slice(&d);
+                match temp {
+                    Ok(temp) => {result = temp;}
+                    Err(e) => {result = Self::default();}
+                }
             }
             Err(e) => {
                 result = Self::default();
