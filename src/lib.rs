@@ -146,6 +146,7 @@ pub mod gpu;
 #[cfg(feature = "groth16")]
 pub mod groth16;
 pub mod multiexp;
+pub mod settings;
 
 pub mod util_cs;
 use ff::{Field, ScalarEngine};
