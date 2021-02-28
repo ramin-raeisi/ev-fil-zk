@@ -59,6 +59,17 @@ lazy_static::lazy_static! {
 
         core_counts
     };
+
+    static ref CONST_SETTINGS: HashMap<String, (usize, (usize, usize))> = {
+        let mut const_settings : HashMap<String, (usize, (usize, usize))> = vec![
+            ("Tesla V100S".to_string(), (67108864, (12, 10))),
+
+            ("GeForce RTX 3080".to_string(), (33554466, (11, 8))),
+            ("GeForce RTX 3090".to_string(), (67108864, (12, 10))),
+        ].into_iter().collect();
+
+        const_settings
+    };
 }
 
 const DEFAULT_CORE_COUNT: usize = 2560;
@@ -83,6 +94,28 @@ pub fn best_work_size(d: &opencl::Device, over_g2: bool) -> usize {
     // ((get_core_count(d) as f64) * (work_size_multiplier as f64) * 1.85f64) as usize
 
     get_core_count(d) * work_size_multiplier * 2
+}
+
+pub fn try_get_chunk_size(d: &opencl::Device) -> usize {
+    get_params(d).0
+}
+
+pub fn try_get_window_size(d: &opencl::Device, over_g2: bool) -> usize {
+    if over_g2 {
+        return get_params(d).1.1;
+    }
+
+    get_params(d).1.0
+}
+
+fn get_params(d: &opencl::Device) -> (usize, (usize, usize)) {
+    let name = d.name();
+    match CONST_SETTINGS.get(&name[..]) {
+        Some(&params) => params,
+        None => {
+            (0, (0, 0))
+        }
+    } 
 }
 
 pub fn get_core_count(d: &opencl::Device) -> usize {
