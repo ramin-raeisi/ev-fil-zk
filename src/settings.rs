@@ -45,10 +45,10 @@ impl Settings{
                 let temp = serde_json::de::from_slice(&d);
                 match temp {
                     Ok(temp) => {result = temp;}
-                    Err(e) => {result = Self::default();}
+                    Err(_) => {result = Self::default();}
                 }
             }
-            Err(e) => {
+            Err(_) => {
                 result = Self::default();
             }
         }
