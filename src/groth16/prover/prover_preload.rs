@@ -132,154 +132,179 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
     let aux_assignments = rx_aux_assignments.recv().unwrap();
     info!("params preload time: {:?}", now.elapsed());
 
-    
-    info!("starting FFT phase");
-    let fft_start = Instant::now();
+    info!("starting fft + multiexp phases in parallel");
+    let now = Instant::now();
 
-    let a_s = provers
-        .par_iter_mut()
-        .map(|prover| {
-            let mut a =
-                EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.a, Vec::new()))?;
-            let mut b =
-                EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.b, Vec::new()))?;
-            let mut c =
-                EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.c, Vec::new()))?;
+    let (tx_l_s, rx_l_s) = mpsc::sync_channel(1);
+    let (tx_inputs, rx_inputs) = mpsc::sync_channel(1);
+    let (tx_h_s, rx_h_s) = mpsc::sync_channel(1);
+    let (tx_a_s, rx_a_s) = mpsc::sync_channel(1);
 
-            let mut coeff = vec![&mut a, &mut b, &mut c];
+    rayon::scope(|s| {
+        let provers_a = &mut provers;
+        // a_s
+        s.spawn(move |_| {
+            let tx_a_s = tx_a_s.clone();
+            let a_s = provers_a
+            .par_iter_mut()
+            .map(|prover| {
+                let mut a =
+                    EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.a, Vec::new()))?;
+                let mut b =
+                    EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.b, Vec::new()))?;
+                let mut c =
+                    EvaluationDomain::from_coeffs(std::mem::replace(&mut prover.c, Vec::new()))?;
 
-            coeff.par_iter_mut().enumerate().for_each(move |(i, v)| {
-                if i == 2 {
-                    v.ifft(Some(&DEVICE_POOL)).unwrap();
-                } else {
-                    v.ifft(Some(&DEVICE_POOL)).unwrap();
-                    v.coset_fft(Some(&DEVICE_POOL)).unwrap();
-                }
-            });
+                let mut coeff = vec![&mut a, &mut b, &mut c];
 
-            a.mul_assign(&b, Some(&DEVICE_POOL))?;
-            drop(b);
-            a.icoset_fft(Some(&DEVICE_POOL))?;
-            a.sub_assign(&c, Some(&DEVICE_POOL))?;
-            drop(c);
-            a.divide_by_z_on_coset();
-            let mut a = a.into_coeffs();
-            let a_len = a.len() - 1;
-            a.truncate(a_len);
+                coeff.par_iter_mut().enumerate().for_each(move |(i, v)| {
+                    if i == 2 {
+                        v.ifft(Some(&DEVICE_POOL)).unwrap();
+                    } else {
+                        v.ifft(Some(&DEVICE_POOL)).unwrap();
+                        v.coset_fft(Some(&DEVICE_POOL)).unwrap();
+                    }
+                });
 
-            Ok(Arc::new(
-                a.iter().map(|s| s.0.into_repr()).collect::<Vec<_>>(),
-            ))
-        })
-        .collect::<Result<Vec<_>, SynthesisError>>()?;
+                a.mul_assign(&b, Some(&DEVICE_POOL))?;
+                drop(b);
+                a.icoset_fft(Some(&DEVICE_POOL))?;
+                a.sub_assign(&c, Some(&DEVICE_POOL))?;
+                drop(c);
+                a.divide_by_z_on_coset();
+                let mut a = a.into_coeffs();
+                let a_len = a.len() - 1;
+                a.truncate(a_len);
 
-    let fft_time = fft_start.elapsed();
-    info!("FFT phase time: {:?}", fft_time);
+                Ok(Arc::new(
+                    a.iter().map(|s| s.0.into_repr()).collect::<Vec<_>>(),
+                ))
+            })
+            .collect::<Result<Vec<_>, SynthesisError>>().unwrap();
 
-    info!("starting multiexp phase");
-    let multiexp_start = Instant::now();
+            tx_a_s.send(a_s).unwrap();
+        });
 
-    info!("h_s");
-    let h_skip = 0;
-    let h_s = a_s
-        .into_par_iter()
-        .map(|a| {
-            multiexp_skipdensity(
-                h_base.clone(),
-                h_skip,
-                Arc::clone(&a),
-                a.len(),
-                Some(&DEVICE_POOL))
-        })
-        .collect::<Vec<_>>();
-    
-    info!("l_s");
-    let l_skip = 0;
-    let aux_assignments_arc = aux_assignments.clone();
-    let l_s = aux_assignments_arc
-        .into_par_iter()
-        .map(|aux_assignment| {
-            multiexp_skipdensity(
-                l_base.clone(),
-                l_skip,
-                Arc::clone(&aux_assignment),
-                aux_assignment.len(),
-                Some(&DEVICE_POOL))
-        }).collect::<Vec<_>>();
+        // l_s
+        s.spawn(|_| {
+            let l_skip = 0;
+            let aux_assignments_arc = aux_assignments.clone();
+            let l_s = aux_assignments_arc
+                .into_par_iter()
+                .map(|aux_assignment| {
+                    multiexp_skipdensity(
+                        l_base.clone(),
+                        l_skip,
+                        Arc::clone(&aux_assignment),
+                        aux_assignment.len(),
+                        Some(&DEVICE_POOL))
+                }).collect::<Vec<_>>();
+            
+            tx_l_s.send(l_s).unwrap();
+        });
+    });
 
-    let inputs = provers
-        .par_iter()
-        .zip(input_assignments.par_iter())
-        .zip(aux_assignments.par_iter())
-        .map(|((prover, input_assignment), aux_assignment)| {
-            //let a_aux_density_total = prover.a_aux_density.get_total_density();
+    rayon::scope(|s| {
+        // inputs
+        s.spawn(|_| {
+            let inputs = provers
+            .par_iter()
+            .zip(input_assignments.par_iter())
+            .zip(aux_assignments.par_iter())
+            .map(|((prover, input_assignment), aux_assignment)| {
 
-            let a_input_skip = 0;
-            let a_aux_skip = input_assignment.len();
+                let a_input_skip = 0;
+                let a_aux_skip = input_assignment.len();
 
-            let a_inputs = multiexp_skipdensity(
-                a_base.clone(),
-                a_input_skip,
-                input_assignment.clone(),
-                input_assignment.len(),
-                Some(&DEVICE_POOL),
-            );
+                let a_inputs = multiexp_skipdensity(
+                    a_base.clone(),
+                    a_input_skip,
+                    input_assignment.clone(),
+                    input_assignment.len(),
+                    Some(&DEVICE_POOL),
+                );
 
-            let (a_aux_exps, a_aux_n) = density_filter(
-                a_base.clone(),
-                Arc::new(prover.a_aux_density.clone()),
-                aux_assignment.clone(),
-            );
+                let (a_aux_exps, a_aux_n) = density_filter(
+                    a_base.clone(),
+                    Arc::new(prover.a_aux_density.clone()),
+                    aux_assignment.clone(),
+                );
 
-            let a_aux = multiexp_skipdensity(
-                a_base.clone(),
-                a_aux_skip,
-                a_aux_exps,
-                a_aux_n,
-                Some(&DEVICE_POOL),
-            );
+                let a_aux = multiexp_skipdensity(
+                    a_base.clone(),
+                    a_aux_skip,
+                    a_aux_exps,
+                    a_aux_n,
+                    Some(&DEVICE_POOL),
+                );
 
-            let b_input_density = Arc::new(prover.b_input_density.clone());
-            let b_input_density_total = b_input_density.get_total_density();
-            let b_aux_density = Arc::new(prover.b_aux_density.clone());
-            //let b_aux_density_total = b_aux_density.get_total_density();
+                let b_input_density = Arc::new(prover.b_input_density.clone());
+                let b_input_density_total = b_input_density.get_total_density();
+                let b_aux_density = Arc::new(prover.b_aux_density.clone());
+                //let b_aux_density_total = b_aux_density.get_total_density();
 
-            let b_input_skip = 0;
-            let b_aux_skip = b_input_density_total;
+                let b_input_skip = 0;
+                let b_aux_skip = b_input_density_total;
 
-            let b_g2_inputs = multiexp(
-                b_g2_base.clone(),
-                b_input_skip,
-                b_input_density,
-                input_assignment.clone(),
-                Some(&DEVICE_POOL),
-            );
+                let b_g2_inputs = multiexp(
+                    b_g2_base.clone(),
+                    b_input_skip,
+                    b_input_density,
+                    input_assignment.clone(),
+                    Some(&DEVICE_POOL),
+                );
 
-            let (b_g2_aux_exps, b_g2_aux_n) = density_filter(
-                b_g2_base.clone(),
-                b_aux_density.clone(),
-                aux_assignment.clone()
-            );
+                let (b_g2_aux_exps, b_g2_aux_n) = density_filter(
+                    b_g2_base.clone(),
+                    b_aux_density.clone(),
+                    aux_assignment.clone()
+                );
 
-            let b_g2_aux = multiexp_skipdensity(
-                b_g2_base.clone(),
-                b_aux_skip,
-                b_g2_aux_exps,
-                b_g2_aux_n,
-                Some(&DEVICE_POOL),
-            );
+                let b_g2_aux = multiexp_skipdensity(
+                    b_g2_base.clone(),
+                    b_aux_skip,
+                    b_g2_aux_exps,
+                    b_g2_aux_n,
+                    Some(&DEVICE_POOL),
+                );
 
-            Ok((
-                a_inputs,
-                a_aux,
-                b_g2_inputs,
-                b_g2_aux,
-            ))
-        })
-        .collect::<Result<Vec<_>, SynthesisError>>()?;
+                Ok((
+                    a_inputs,
+                    a_aux,
+                    b_g2_inputs,
+                    b_g2_aux,
+                ))
+            })
+            .collect::<Result<Vec<_>, SynthesisError>>().unwrap();
 
-    let multiexp_time = multiexp_start.elapsed();
-    info!("multiexp phase time: {:?}", multiexp_time);
+            tx_inputs.send(inputs).unwrap();
+        });
+
+        // h_s
+        s.spawn(move |_| {
+            let a_s = rx_a_s.recv().unwrap();
+            let h_skip = 0;
+            let h_s = a_s
+                .into_par_iter()
+                .map(|a| {
+                    multiexp_skipdensity(
+                        h_base.clone(),
+                        h_skip,
+                        Arc::clone(&a),
+                        a.len(),
+                        Some(&DEVICE_POOL))
+                })
+                .collect::<Vec<_>>();
+
+            tx_h_s.send(h_s).unwrap();
+        });
+    });
+
+    let l_s = rx_l_s.recv().unwrap();
+    let inputs = rx_inputs.recv().unwrap();
+    let h_s = rx_h_s.recv().unwrap();
+
+    info!("fft + multiexp phases time: {:?}", now.elapsed());
 
     let proofs = //h_s_l_s.into_par_iter()
         h_s.into_par_iter()
