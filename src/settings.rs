@@ -1,15 +1,14 @@
-use std::env;
 
-use config::{Config, ConfigError, Environment, File}; 
+use config::{ ConfigError}; 
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::ops::{Deref, DerefMut};
 use std::fs;
+use std::sync::Mutex;
 
 lazy_static! {
-    pub static ref FILSETTINGS: Settings = {
+    pub static ref FILSETTINGS: Mutex<Settings> = {
         let m = Settings::new().unwrap();
-        m
+        Mutex::new(m)
     }; 
 }
 
