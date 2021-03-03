@@ -20,7 +20,6 @@ pub struct Settings {
     pub max_window_size: f64,
     pub work_size_multiplier: f64,
     pub chunk_size_multiplier: f64,
-    pub size: usize,
 }
 
 impl Default for Settings {
@@ -30,7 +29,6 @@ impl Default for Settings {
             max_window_size: 10_f64,
             work_size_multiplier: 2_f64,
             chunk_size_multiplier: 2_f64,
-            size: 4,
         }
     }
 }
