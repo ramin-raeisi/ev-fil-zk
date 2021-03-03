@@ -1,4 +1,4 @@
-use bit_vec::{self, BitVec};
+use bitvec::prelude::*;
 use ff::{Field, PrimeField, PrimeFieldRepr, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
 use log::{error};
@@ -11,6 +11,7 @@ use super::SynthesisError;
 use crate::gpu;
 use futures::future::{Future, lazy};
 use rayon_futures::ScopeFutureExt;
+use std::iter::FusedIterator;
 
 /// An object that builds a source of bases.
 pub trait SourceBuilder<G: CurveAffine>: Send + Sync + 'static + Clone {
@@ -83,54 +84,49 @@ impl<G: CurveAffine> Source<G> for (Arc<Vec<G>>, usize) {
     }
 }
 
-pub trait QueryDensity {
+/*struct BitIterator<'a> {
+    iter: bitvec::slice::Iter<'a, Lsb0, u8>
+}
+
+impl<'a> Iterator for BitIterator<'a> {
+    type Item = bool;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.by_val()
+    }
+}*/
+
+/*pub trait QueryDensity {
     /// Returns whether the base exists.
-    type Iter: Iterator<Item=bool>;
+    type Iter<'a>: BitIterator<'a, Lsb0, u8>;
 
     fn iter(self) -> Self::Iter;
     fn get_query_size(self) -> Option<usize>;
-}
-
-#[derive(Clone)]
-pub struct FullDensity;
-
-impl AsRef<FullDensity> for FullDensity {
-    fn as_ref(&self) -> &FullDensity {
-        self
-    }
-}
-
-impl<'a> QueryDensity for &'a FullDensity {
-    type Iter = iter::Repeat<bool>;
-
-    fn iter(self) -> Self::Iter {
-        iter::repeat(true)
-    }
-
-    fn get_query_size(self) -> Option<usize> {
-        None
-    }
-}
+}*/
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct DensityTracker {
-    pub bv: BitVec,
+    pub bv: BitVec<Lsb0, u8>,
     pub total_density: usize,
 }
 
-impl<'a> QueryDensity for &'a DensityTracker {
-    type Iter = bit_vec::Iter<'a>;
+/*impl<'a> QueryDensity for &'a DensityTracker {
+    //type Iter: Iterator<Item=bool>;
 
-    fn iter(self) -> Self::Iter {
-        self.bv.iter()
+    fn iter(self) -> BitIterator<'a> {
+        BitIterator {iter: self.bv.iter()}
     }
 
     fn get_query_size(self) -> Option<usize> {
         Some(self.bv.len())
     }
-}
+}*/
 
-impl DensityTracker {
+impl<'a> DensityTracker {
+    fn get_query_size(&self) -> Option<usize> {
+        Some(self.bv.len())
+    }
+
     pub fn new() -> DensityTracker {
         DensityTracker {
             bv: BitVec::new(),
@@ -193,7 +189,7 @@ impl DensityTracker {
     }
 
     pub fn deallocate(&mut self, idx: usize) {
-        if self.bv.get(idx).unwrap() {
+        if *self.bv.get(idx).unwrap() {
             self.bv.set(idx, false);
             self.total_density -= 1;
         }
@@ -298,21 +294,19 @@ pub fn multiexp_cpu<G>(
         })
 }
 
-fn multiexp_inner<Q, D, G, S>(
+fn multiexp_inner<G, S>(
     bases: S,
-    density_map: D,
+    density_map: Arc<DensityTracker>,
     exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
     c: u32,
 ) -> Result<<G as CurveAffine>::Projective, SynthesisError>
     where
-            for<'a> &'a Q: QueryDensity,
-            D: Send + Sync + 'static + Clone + AsRef<Q>,
             G: CurveAffine,
             S: SourceBuilder<G>,
 {
     // Perform this region of the multiexp
     let this = move |bases: S,
-                     density_map: D,
+                     density_map: Arc<DensityTracker>,
                      exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
                      skip: u32|
                      -> Result<_, SynthesisError> {
@@ -332,8 +326,9 @@ fn multiexp_inner<Q, D, G, S>(
         let handle_trivial = skip == 0;
 
         // Sort the bases into buckets
-        for (&exp, density) in exponents.iter().zip(density_map.as_ref().iter()) {
-            if density {
+        let bv = Arc::new(&density_map.bv);
+        for (&exp, density) in exponents.iter().zip(bv.iter()) {
+            if *density {
                 if exp == zero {
                     bases.skip(1)?;
                 } else if exp == one {
@@ -390,24 +385,23 @@ fn multiexp_inner<Q, D, G, S>(
 
 /// Perform multi-exponentiation. The caller is responsible for ensuring the
 /// query size is the same as the number of exponents.
-pub fn multiexp<Q, D, G>(
+pub fn multiexp<G>(
     bases: Arc<Vec<G>>,
     bases_skip: usize,
-    density_map: D,
+    density_map: Arc<DensityTracker>,
     exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>,
     devices: Option<&gpu::DevicePool>,
 ) -> Box<dyn Future<Item=<G as CurveAffine>::Projective, Error=SynthesisError> + Send>
     where
-            for<'a> &'a Q: QueryDensity,
-            D: Send + Sync + 'static + Clone + AsRef<Q>,
             G: CurveAffine,
             G::Engine: crate::bls::Engine,
 {
     if let Some(ref _devices) = devices {
         let mut exps = vec![exponents[0]; exponents.len()];
         let mut n = 0;
-        for (&e, d) in exponents.iter().zip(density_map.as_ref().iter()) {
-            if d {
+        let bv = Arc::new(&density_map.bv);
+        for (&e, d) in exponents.iter().zip(bv.iter()) {
+            if *d {
                 exps[n] = e;
                 n += 1;
             }
@@ -438,7 +432,7 @@ pub fn multiexp<Q, D, G>(
         (f64::from(exponents.len() as u32)).ln().ceil() as u32
     };
 
-    if let Some(query_size) = density_map.as_ref().get_query_size() {
+    if let Some(query_size) = density_map.get_query_size() {
         // If the density map has a known query size, it should not be
         // inconsistent with the number of exponents.
         assert!(query_size == exponents.len());
@@ -488,21 +482,20 @@ where
 }
 
 // density map filter for exponents
-pub fn density_filter<Q, D, G>(
+pub fn density_filter<G>(
     _bases: Arc<Vec<G>>,
-    density_map: D,
+    density_map: Arc<DensityTracker>,
     exponents: Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>
 ) ->  (Arc<Vec<<<G::Engine as ScalarEngine>::Fr as PrimeField>::Repr>>, usize)
 where
-    for<'a> &'a Q: QueryDensity,
-    D: Send + Sync + 'static + Clone + AsRef<Q>,
     G: CurveAffine,
     G::Engine: crate::bls::Engine,
 {
     let mut exps = vec![exponents[0]; exponents.len()];
     let mut n = 0;
-    for (&e, d) in exponents.iter().zip(density_map.as_ref().iter()) {
-        if d {
+    let bv = Arc::new(&density_map.bv);
+    for (&e, d) in exponents.iter().zip(bv.iter()) {
+        if *d {
             exps[n] = e;
             n += 1;
         }
