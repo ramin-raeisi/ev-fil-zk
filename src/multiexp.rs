@@ -84,43 +84,11 @@ impl<G: CurveAffine> Source<G> for (Arc<Vec<G>>, usize) {
     }
 }
 
-/*struct BitIterator<'a> {
-    iter: bitvec::slice::Iter<'a, Lsb0, u8>
-}
-
-impl<'a> Iterator for BitIterator<'a> {
-    type Item = bool;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.iter.by_val()
-    }
-}*/
-
-/*pub trait QueryDensity {
-    /// Returns whether the base exists.
-    type Iter<'a>: BitIterator<'a, Lsb0, u8>;
-
-    fn iter(self) -> Self::Iter;
-    fn get_query_size(self) -> Option<usize>;
-}*/
-
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct DensityTracker {
     pub bv: BitVec<Lsb0, u8>,
     pub total_density: usize,
 }
-
-/*impl<'a> QueryDensity for &'a DensityTracker {
-    //type Iter: Iterator<Item=bool>;
-
-    fn iter(self) -> BitIterator<'a> {
-        BitIterator {iter: self.bv.iter()}
-    }
-
-    fn get_query_size(self) -> Option<usize> {
-        Some(self.bv.len())
-    }
-}*/
 
 impl<'a> DensityTracker {
     fn get_query_size(&self) -> Option<usize> {
@@ -190,9 +158,9 @@ impl<'a> DensityTracker {
 
     pub fn deallocate(&mut self, idx: usize) {
         if *self.bv.get(idx).unwrap() {
-            self.bv.set(idx, false);
             self.total_density -= 1;
         }
+        self.bv.remove(idx);
     }
 
     pub fn set_var_density(&mut self, idx: usize, value: bool) {
@@ -200,7 +168,10 @@ impl<'a> DensityTracker {
             self.inc(idx);
         }
         else {
-            self.deallocate(idx);
+            if *self.bv.get(idx).unwrap() {
+                self.bv.set(idx, false);
+                self.total_density -= 1;
+            }
         }
     }
 }
