@@ -255,13 +255,13 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         }
     }
 
-    fn align_variable(&mut self, v: &mut Variable) {
+    fn align_variable(&mut self, v: &mut Variable, shift: usize) {
         match v {
             Variable(Index::Input(i)) => {
-                *v = Variable(Index::Input(self.input_assignment.len() + *i - 1));
+                *v = Variable(Index::Input(self.input_assignment.len() + *i - 1 - shift));
             }
             Variable(Index::Aux(i)) => {
-                *v = Variable(Index::Aux(self.aux_assignment.len() + *i));
+                *v = Variable(Index::Aux(self.aux_assignment.len() + *i - shift));
             }
         }
     }
@@ -269,9 +269,11 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
         match v {
             Variable(Index::Input(i)) => {
+                self.input_assignment.remove(i);
                 self.b_input_density.deallocate(i);
             }
             Variable(Index::Aux(i)) => {
+                self.aux_assignment.remove(i);
                 self.a_aux_density.deallocate(i);
                 self.b_aux_density.deallocate(i);
             }
