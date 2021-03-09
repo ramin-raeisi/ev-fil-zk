@@ -39,16 +39,16 @@ const MEMORY_PADDING: f64 = 0.2f64;
 }*/
 
 pub fn get_max_window() -> usize {
-    let max_window_cize = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
+    let max_window_size = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
     std::env::var("FIL_ZK_MAX_WINDOW")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FIL_ZK_MAX_WINDOW! Defaulting to {}", max_window_cize);
-                Ok(max_window_cize)
+                error!("Invalid FIL_ZK_MAX_WINDOW! Defaulting to {}", max_window_size);
+                Ok(max_window_size)
             }
         })
-        .unwrap_or(max_window_cize)
+        .unwrap_or(max_window_size)
 }
 
 // Multiexp kernel for a single GPU
@@ -74,8 +74,8 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
     // Thus we need to solve the following equation:
     // window_size + ln(window_size) = ln(exp_bits * n / (work_size))
     let lower_bound = (((exp_bits * n) as f64) / ((work_size) as f64)).ln();
-    let max_window_cize = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
-    for w in 0..max_window_cize {
+    let max_window_size = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
+    for w in 0..max_window_size {
         if (w as f64) + (w as f64).ln() > lower_bound {
             info!("calculated window size: {}", w);
             return w;
@@ -182,7 +182,7 @@ impl<E> MultiexpKernel<E>
         if window_size == 0 {
             window_size = calc_window_size(n as usize, exp_bits, work_size);
         } else { // don't use work_size_multiplier for magic constants
-            work_size = work_size / (settings::FILSETTINGS.work_size_multiplier as usize);
+            work_size = work_size / (settings::FILSETTINGS.lock().unwrap().work_size_multiplier as usize);
         }
 
         let num_windows = ((exp_bits as f64) / (window_size as f64)).ceil() as usize;
