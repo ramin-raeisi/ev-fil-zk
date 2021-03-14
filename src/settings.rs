@@ -1,15 +1,14 @@
-use std::env;
 
-use config::{Config, ConfigError, Environment, File}; 
+use config::{ ConfigError}; 
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::ops::{Deref, DerefMut};
 use std::fs;
+use std::sync::Mutex;
 
 lazy_static! {
-    pub static ref FILSETTINGS: Settings = {
+    pub static ref FILSETTINGS: Mutex<Settings> = {
         let m = Settings::new().unwrap();
-        m
+        Mutex::new(m)
     }; 
 }
 
@@ -21,7 +20,6 @@ pub struct Settings {
     pub max_window_size: f64,
     pub work_size_multiplier: f64,
     pub chunk_size_multiplier: f64,
-    pub size: usize,
 }
 
 impl Default for Settings {
@@ -31,7 +29,6 @@ impl Default for Settings {
             max_window_size: 10_f64,
             work_size_multiplier: 2_f64,
             chunk_size_multiplier: 2_f64,
-            size: 4,
         }
     }
 }
@@ -45,10 +42,10 @@ impl Settings{
                 let temp = serde_json::de::from_slice(&d);
                 match temp {
                     Ok(temp) => {result = temp;}
-                    Err(e) => {result = Self::default();}
+                    Err(_) => {result = Self::default();}
                 }
             }
-            Err(e) => {
+            Err(_) => {
                 result = Self::default();
             }
         }
