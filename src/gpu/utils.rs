@@ -80,11 +80,11 @@ pub fn best_work_size(d: &opencl::Device, over_g2: bool) -> usize {
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FIL_ZK_WORK_SIZE_MULTIPLIER! Defaulting to {}", settings::FILSETTINGS.work_size_multiplier as usize);
-                Ok(settings::FILSETTINGS.work_size_multiplier as usize)
+                error!("Invalid FIL_ZK_WORK_SIZE_MULTIPLIER! Defaulting to {}", settings::FILSETTINGS.lock().unwrap().work_size_multiplier as usize);
+                Ok(settings::FILSETTINGS.lock().unwrap().work_size_multiplier as usize)
             }
         })
-        .unwrap_or(settings::FILSETTINGS.work_size_multiplier as usize);
+        .unwrap_or(settings::FILSETTINGS.lock().unwrap().work_size_multiplier as usize);
 
     // points from G2 have bigger size
     if over_g2 {
