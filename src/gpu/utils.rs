@@ -30,6 +30,7 @@ lazy_static::lazy_static! {
             ("GeForce RTX 3080".to_string(), (8704, 33554466)),
             ("GeForce RTX 3080 20GB".to_string(), (8704, 0)),
             ("GeForce RTX 3090".to_string(), (10496, 67108864)),
+            ("GeForce RTX A6000".to_string(), (10752, 134217728)),
 
             ("GeForce RTX 2080 Ti".to_string(), (4352, 0)),
             ("GeForce RTX 2080 SUPER".to_string(), (3072, 0)),
