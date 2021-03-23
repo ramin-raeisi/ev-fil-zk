@@ -38,6 +38,20 @@ const MEMORY_PADDING: f64 = 0.2f64;
         
 }*/
 
+pub fn get_memory_padding() -> f64 {
+    std::env::var("FIL_ZK_GPU_MEMORY_PADDING")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FIL_ZK_GPU_MEMORY_PADDING! Defaulting to {}", MEMORY_PADDING);
+                Ok(MEMORY_PADDING)
+            }
+        })
+        .unwrap_or(MEMORY_PADDING)
+        .max(1f64)
+        .min(0f64)
+}
+
 pub fn get_max_window() -> usize {
     let max_window_size = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
     std::env::var("FIL_ZK_MAX_WINDOW")
@@ -106,17 +120,7 @@ fn calc_max_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
     where
         E: Engine
 {
-    let memory_padding = std::env::var("FIL_ZK_GPU_MEMORY_PADDING")
-        .and_then(|v| match v.parse() {
-            Ok(val) => Ok(val),
-            Err(_) => {
-                error!("Invalid FIL_ZK_GPU_MEMORY_PADDING! Defaulting to {}", MEMORY_PADDING);
-                Ok(MEMORY_PADDING)
-            }
-        })
-        .unwrap_or(MEMORY_PADDING)
-        .max(1f64)
-        .min(0f64);
+    let memory_padding = get_memory_padding();
     let fil_max_window_cize = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
     //let aff_size = std::cmp::max(std::mem::size_of::<E::G1Affine>(), std::mem::size_of::<E::G2Affine>());
     let aff_size =
