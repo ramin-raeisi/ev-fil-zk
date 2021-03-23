@@ -48,8 +48,8 @@ pub fn get_memory_padding() -> f64 {
             }
         })
         .unwrap_or(MEMORY_PADDING)
-        .max(1f64)
-        .min(0f64)
+        .max(0f64)
+        .min(1f64)
 }
 
 pub fn get_max_window() -> usize {
