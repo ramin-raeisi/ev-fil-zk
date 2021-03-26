@@ -564,6 +564,12 @@ impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> Drop for Namespace<'a, E, CS>
     }
 }
 
+impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> PartialEq for Namespace<'a, E, CS> {
+    fn eq(&self, other: &Namespace<'a, E, CS>) -> bool {) {
+        self.eq(other: &Namespace<'a, E, CS>)
+    }
+}
+
 /// Convenience implementation of ConstraintSystem<E> for mutable references to
 /// constraint systems.
 impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs mut CS {
