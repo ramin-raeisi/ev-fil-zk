@@ -102,6 +102,13 @@ impl<'a> DensityTracker {
         }
     }
 
+    pub fn clone(&self) -> Self {
+        DensityTracker {
+            bv: self.bv.clone(),
+            total_density: self.total_density.clone(),
+        }
+    }
+
     pub fn add_element(&mut self) {
         self.bv.push(false);
     }

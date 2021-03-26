@@ -358,6 +358,10 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         );
     }
 
+    fn clone(&self) -> Self{
+        panic!("parallel functional (fn clone) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
     /// Return the "one" input variable
     fn one() -> Variable {
         Variable::new_unchecked(Index::Input(0))

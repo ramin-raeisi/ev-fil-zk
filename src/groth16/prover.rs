@@ -54,6 +54,7 @@ fn eval<E: Engine>(
     acc
 }
 
+#[derive(Clone)]
 struct ProvingAssignment<E: Engine> {
     // Density of queries
     a_aux_density: DensityTracker,
@@ -134,6 +135,19 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             c: vec![],
             input_assignment: vec![],
             aux_assignment: vec![],
+        }
+    }
+
+    fn clone(&self) -> Self {
+        ProvingAssignment {
+            a_aux_density: self.a_aux_density.clone(),
+            b_input_density: self.b_input_density.clone(),
+            b_aux_density: self.b_aux_density.clone(),
+            a: self.a.clone(),
+            b: self.b.clone(),
+            c: self.c.clone(),
+            input_assignment: self.input_assignment.clone(),
+            aux_assignment: self.aux_assignment.clone(),
         }
     }
 
@@ -590,6 +604,8 @@ mod tests {
 
                 let mut base_partial = ProvingAssignment::<Bls12>::new();
 
+                let mut base_partial2 = ProvingAssignment::<Bls12>::new();
+
                 let provers = vec![&mut full_assignment, &mut base_partial];
                 let x = Fr::from_str("5").unwrap();
                 let mut x_sqr = x.clone();
@@ -603,9 +619,20 @@ mod tests {
                 }
                 
                 let mut partial_assignments = base_partial.make_vector(count / k).unwrap();
+                let mut partial_assignments2 = base_partial.make_vector(count / k).unwrap();
+
+                let mut parents = Vec::with_capacity(count);
                 for i in 0..count {
                     let index: usize = i / k;
                     let partial_assignment = &mut partial_assignments[index];
+                    let partial_assignment2 = &mut partial_assignments2[index];
+                    let c = Fr::from_str("7").unwrap();
+                    let com = partial_assignment
+                            .alloc_input(|| format!("alloc_input comm"), || Ok(c.clone()))
+                            .unwrap();
+                            let com = partial_assignment2
+                            .alloc_input(|| format!("alloc_input comm"), || Ok(c.clone()))
+                            .unwrap();
 
                     // take a random element, dobule it and verify results
                     if rng.gen() {
@@ -617,6 +644,10 @@ mod tests {
                         let el_var_part = partial_assignment
                             .alloc_input(|| format!("alloc_input:{},{}", i, k), || Ok(el.clone()))
                             .unwrap();
+                            let el_var_part = partial_assignment2
+                            .alloc_input(|| format!("alloc_input:{},{}", i, k), || Ok(el.clone()))
+                            .unwrap();
+                        parents.push(el_var_part);
 
                         let mut el_double = el.clone();
                         el_double.add_assign(&el);
@@ -627,10 +658,17 @@ mod tests {
                         let el_double_var_part = partial_assignment
                             .alloc(|| format!("alloc:{},{}", i, k), || Ok(el_double.clone()))
                             .unwrap();
+                            let el_double_var_part = partial_assignment2
+                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el_double.clone()))
+                            .unwrap();
 
                         full_assignment.enforce(|| "el_double", |lc| lc + el_var_ful + el_var_ful, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + el_double_var_ful);
                         partial_assignment.enforce(|| "el_double", |lc| lc + el_var_part + el_var_part, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + el_double_var_part);
+                        partial_assignment2.enforce(|| "el_double", |lc| lc + el_var_part + el_var_part, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + el_double_var_part);
+                        parents.push(el_double_var_part);
                     }
+                    partial_assignment.deallocate(com).unwrap();
+                    partial_assignment2.deallocate(com).unwrap();
                 }
 
                 let y = Fr::from_str("4").unwrap();
@@ -643,14 +681,28 @@ mod tests {
                 let mut z_var_part = partial_assignments[pa_n - 1].alloc_input(|| "z", || Ok(z.clone())).unwrap();
 
                 let last_partial = partial_assignments.split_off(pa_n - 1);
-                base_partial.aggregate(partial_assignments); // aggregate all CSs exept the last one
-                base_partial.align_variable(&mut y_var_part); // align variables form the last CS
-                base_partial.align_variable(&mut z_var_part);
+
+                for (i, other_cs) in partial_assignments.into_iter().enumerate() {
+                    base_partial.align_variable(&mut parents[i], 1);
+                    base_partial.aggregate(vec![other_cs]); // aggregate all CSs exept the last one
+                }
+
+                for (i, other_cs) in partial_assignments2.into_iter().enumerate() {
+                    base_partial.align_variable(&mut parents[i], 1);
+                    base_partial2.aggregate(vec![other_cs]); // aggregate all CSs exept the last one
+                }
+
+                base_partial.align_variable(&mut y_var_part, 0); // align variables form the last CS
+                base_partial.align_variable(&mut z_var_part, 0);
                 base_partial.aggregate(last_partial);
 
                 full_assignment.enforce(|| "y_enforce", |lc| lc + y_var_ful, |lc| lc + z_var_ful, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
                 base_partial.enforce(|| "y_enforce", |lc| lc + y_var_part, |lc| lc + z_var_part, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
-                assert_eq!(base_partial, full_assignment);
+                for j in 0..3 {
+                    full_assignment.enforce(|| "y_enforce", |lc| lc + parents[j] , |lc| lc + parents[count + j], |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
+                    //base_partial.enforce(|| "y_enforce", |lc| lc + parents[j], |lc| lc + parents[count + j], |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
+                } 
+                assert_eq!(full_assignment, base_partial);
             }
         }
     }
