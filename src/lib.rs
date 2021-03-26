@@ -487,6 +487,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
         CS::one()
     }
 
+    fn clone(&self) -> Self {
+        self.clone()
+    }
+
     fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>
     where
         F: FnOnce() -> Result<E::Fr, SynthesisError>,
@@ -577,6 +581,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn one() -> Variable {
         CS::one()
+    }
+
+    fn clone(&self) -> Self{
+        (**&self).clone()
     }
 
     fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>
