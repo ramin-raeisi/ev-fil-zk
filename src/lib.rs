@@ -565,8 +565,8 @@ impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> Drop for Namespace<'a, E, CS>
 }
 
 impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> PartialEq for Namespace<'a, E, CS> {
-    fn eq(&self, other: &Namespace<'a, E, CS>) -> bool {) {
-        self.eq(other: &Namespace<'a, E, CS>)
+    fn eq(&self, other: &Namespace<'a, E, CS>) -> bool {
+        self.eq(other)
     }
 }
 
