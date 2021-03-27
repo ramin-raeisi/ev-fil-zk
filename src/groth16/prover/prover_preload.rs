@@ -5,6 +5,7 @@ use crate::bls::Engine;
 use ff::{Field, PrimeField};
 use groupy::{CurveAffine, CurveProjective};
 use rayon::prelude::*;
+use crossbeam;
 
 use super::{ParameterGetter, Proof};
 use crate::domain::{EvaluationDomain};
@@ -70,31 +71,32 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
     let (tx_bg2, rx_bg2) = mpsc::channel();
     let (tx_input_assignments, rx_input_assignments) = mpsc::channel();
     let (tx_aux_assignments, rx_aux_assignments) = mpsc::channel();
-    rayon::scope(|s| {
+    crossbeam::scope(|s| {
+        let mut threads = Vec::new();
         let params = &params;
         let provers = &mut provers;
         // h_params
-        s.spawn(move |_| {
+        threads.push(s.spawn(move |_| {
             let h_params = params.get_h().unwrap();
             tx_h.send(h_params).unwrap();
-        });
+        }));
         // l_params
-        s.spawn(move |_| {
+        threads.push(s.spawn(move |_| {
             let l_params = params.get_l().unwrap();
             tx_l.send(l_params).unwrap();
-        });
+        }));
         // a_params
-        s.spawn(move |_| {
+        threads.push(s.spawn(move |_| {
             let a_base = params.get_a().unwrap();
             tx_a.send(a_base).unwrap();
-        });
+        }));
         // bg2_params
-        s.spawn(move |_| {
+        threads.push(s.spawn(move |_| {
             let b_g2_base = params.get_b_g2().unwrap();
             tx_bg2.send(b_g2_base).unwrap();
-        });
+        }));
         // assignments
-        s.spawn(move |_| {
+        threads.push(s.spawn(move |_| {
             let input_assignments = provers	
                 .par_iter_mut()	
                 .map(|prover| {	
@@ -122,8 +124,12 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
                 })	
                 .collect::<Vec<_>>();
             tx_aux_assignments.send(aux_assignments).unwrap();
-        });
-    });
+        }));
+
+        for t in threads {
+            t.join().unwrap();
+        }
+    }).unwrap();
     let h_base = rx_h.recv().unwrap();
     let l_base = rx_l.recv().unwrap();
     let a_base = rx_a.recv().unwrap();
@@ -140,10 +146,11 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
     let (tx_h_s, rx_h_s) = mpsc::sync_channel(1);
     let (tx_a_s, rx_a_s) = mpsc::sync_channel(1);
 
-    rayon::scope(|s| {
+    crossbeam::scope(|s| {
+        let mut threads = Vec::new();
         let provers_a = &mut provers;
         // a_s
-        s.spawn(move |_| {
+        threads.push(s.spawn(move |_| {
             let tx_a_s = tx_a_s.clone();
             let a_s = provers_a
             .par_iter_mut()
@@ -183,10 +190,10 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
             .collect::<Result<Vec<_>, SynthesisError>>().unwrap();
 
             tx_a_s.send(a_s).unwrap();
-        });
+        }));
 
         // l_s
-        s.spawn(|_| {
+        threads.push(s.spawn(|_| {
             let l_skip = 0;
             let aux_assignments_arc = aux_assignments.clone();
             let l_s = aux_assignments_arc
@@ -201,12 +208,17 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
                 }).collect::<Vec<_>>();
             
             tx_l_s.send(l_s).unwrap();
-        });
-    });
+        }));
+        
+        for t in threads {
+            t.join().unwrap();
+        }
+    }).unwrap();
 
-    rayon::scope(|s| {
+    crossbeam::scope(|s| {
+        let mut threads = Vec::new();
         // inputs
-        s.spawn(|_| {
+        threads.push(s.spawn(|_| {
             let inputs = provers
             .par_iter()
             .zip(input_assignments.par_iter())
@@ -278,10 +290,10 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
             .collect::<Result<Vec<_>, SynthesisError>>().unwrap();
 
             tx_inputs.send(inputs).unwrap();
-        });
+        }));
 
         // h_s
-        s.spawn(move |_| {
+        threads.push(s.spawn(move |_| {
             let a_s = rx_a_s.recv().unwrap();
             let h_skip = 0;
             let h_s = a_s
@@ -297,8 +309,12 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
                 .collect::<Vec<_>>();
 
             tx_h_s.send(h_s).unwrap();
-        });
-    });
+        }));
+
+        for t in threads {
+            t.join().unwrap();
+        }
+    }).unwrap();
 
     let l_s = rx_l_s.recv().unwrap();
     let inputs = rx_inputs.recv().unwrap();
