@@ -121,7 +121,7 @@ fn calc_max_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
         E: Engine
 {
     let memory_padding = get_memory_padding();
-    let fil_max_window_cize = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
+    let fil_max_window_size = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
     //let aff_size = std::cmp::max(std::mem::size_of::<E::G1Affine>(), std::mem::size_of::<E::G2Affine>());
     let aff_size =
         if over_g2 { std::mem::size_of::<E::G2Affine>() } else { std::mem::size_of::<E::G1Affine>() };
@@ -130,7 +130,7 @@ fn calc_max_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
     let proj_size =
         if over_g2 { std::mem::size_of::<E::G2>() } else { std::mem::size_of::<E::G1>() };
     ((((mem as f64) * (1f64 - memory_padding)) as usize)
-        - (work_size * ((1 <<fil_max_window_cize) + 1) * proj_size))
+        - (work_size * ((1 <<fil_max_window_size) + 1) * proj_size))
         / (2 * aff_size + exp_size)
 }
 
@@ -153,8 +153,8 @@ impl<E> MultiexpKernel<E>
     fn chunk_size_of(program: &opencl::Program, work_size: usize, over_g2: bool) -> usize {
         let exp_bits = exp_size::<E>() * 8;
         let max_n = calc_max_chunk_size::<E>(program.device().memory(), work_size, over_g2);
-        let fil_max_window_cize = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
-        let best_n = calc_best_chunk_size(fil_max_window_cize, work_size, exp_bits);
+        let fil_max_window_size = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
+        let best_n = calc_best_chunk_size(fil_max_window_size, work_size, exp_bits);
         if max_n < best_n {
             info!("the best chunks size > max chunk size. Probably, settings are wrong for this machine");
         }
