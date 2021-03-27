@@ -64,7 +64,7 @@ lazy_static::lazy_static! {
         let mut const_settings : HashMap<String, (usize, (usize, usize))> = vec![
             ("Tesla V100S".to_string(), (67108864, (12, 10))),
 
-            ("GeForce RTX 3080".to_string(), (33554466, (11, 8))),
+            //("GeForce RTX 3080".to_string(), (33554466, (11, 8))),
             ("GeForce RTX 3090".to_string(), (67108864, (12, 10))),
         ].into_iter().collect();
 
