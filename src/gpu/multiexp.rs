@@ -23,20 +23,20 @@ const MEMORY_PADDING: f64 = 0.2f64;
 // Increase GPU memory usage via inner loop, 1 for default value
 //const CHUNK_SIZE_MULTIPLIER: f64 = 2.0;
 
-/*pub fn get_cpu_utilization() -> f64 {
+pub fn get_cpu_utilization() -> f64 {
     std::env::var("FIL_ZK_CPU_UTILIZATION")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FIL_ZK_CPU_UTILIZATION! Defaulting to {}", CPU_UTILIZATION);
-                Ok(CPU_UTILIZATION)
+                error!("Invalid FIL_ZK_CPU_UTILIZATION! Defaulting to {}", settings::FILSETTINGS.lock().unwrap().cpu_utilization);
+                Ok(settings::FILSETTINGS.lock().unwrap().cpu_utilization)
             }
         })
-        .unwrap_or(CPU_UTILIZATION)
+        .unwrap_or(settings::FILSETTINGS.lock().unwrap().cpu_utilization)
         .max(0f64)
         .min(1f64)
         
-}*/
+}
 
 pub fn get_memory_padding() -> f64 {
     std::env::var("FIL_ZK_GPU_MEMORY_PADDING")
@@ -283,7 +283,7 @@ impl<E> MultiexpKernel<E>
 
         // use cpu for parallel calculations
         //let mut cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
-        let cpu_util = settings::FILSETTINGS.lock().unwrap().cpu_utilization;
+        let cpu_util = get_cpu_utilization();
         let mut cpu_n = ((n as f64) * cpu_util) as usize;
         if n < 10000 {
             cpu_n = n;
