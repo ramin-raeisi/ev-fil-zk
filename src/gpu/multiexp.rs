@@ -3,7 +3,7 @@ use super::utils;
 use crate::bls::{Engine, Bls12};
 use ff::{Field, PrimeField, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
-use log::{error, info};
+use log::{error, info, debug};
 use rust_gpu_tools::*;
 use std::any::TypeId;
 use std::sync::{mpsc, Arc};
@@ -129,9 +129,11 @@ fn calc_max_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
     //let proj_size = std::mem::size_of::<E::G1>() + std::mem::size_of::<E::G2>();
     let proj_size =
         if over_g2 { std::mem::size_of::<E::G2>() } else { std::mem::size_of::<E::G1>() };
-    ((((mem as f64) * (1f64 - memory_padding)) as usize)
-        - (work_size * ((1 <<fil_max_window_size) + 1) * proj_size))
-        / (2 * aff_size + exp_size)
+    let chunk_size = ((((mem as f64) * (1f64 - memory_padding)) as usize)
+        - (work_size * ((1 << fil_max_window_size) + 1) * proj_size))
+        / (2 * aff_size + exp_size);
+    debug!("Memory usage by max chunks size: {}", (2 * aff_size + exp_size) * chunk_size + (work_size * ((1 << fil_max_window_size) + 1) * proj_size) );
+    chunk_size
 }
 
 fn exp_size<E: Engine>() -> usize {
@@ -156,7 +158,7 @@ impl<E> MultiexpKernel<E>
         let fil_max_window_size = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
         let best_n = calc_best_chunk_size(fil_max_window_size, work_size, exp_bits);
         if max_n < best_n {
-            info!("the best chunks size > max chunk size. Probably, settings are wrong for this machine");
+            info!("the best chunks size > max chunk size ({} / {}). Probably, settings are wrong for this machine", best_n, max_n);
         }
         std::cmp::min(max_n, best_n)
     }
