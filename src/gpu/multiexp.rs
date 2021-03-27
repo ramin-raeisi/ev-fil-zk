@@ -99,7 +99,7 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
 }
 
 fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usize) -> usize {
-    let chunk_size_multiplier = std::env::var("FIL_ZK_CHUNK_SIZE_MULTIPLIER")
+    let chunk_size_multiplier: f64 = std::env::var("FIL_ZK_CHUNK_SIZE_MULTIPLIER")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
