@@ -65,7 +65,7 @@ lazy_static::lazy_static! {
         let mut const_settings : HashMap<String, (usize, (usize, usize))> = vec![
             ("Tesla V100S".to_string(), (67108864, (12, 10))),
 
-            ("GeForce RTX 3080".to_string(), (33554466, (11, 8))),
+            //("GeForce RTX 3080".to_string(), (33554466, (11, 8))),
             ("GeForce RTX 3090".to_string(), (67108864, (12, 10))),
         ].into_iter().collect();
 
@@ -77,24 +77,24 @@ const DEFAULT_CORE_COUNT: usize = 2560;
 //const WORK_SIZE_MULTIPLIER: usize = 2;
 
 pub fn best_work_size(d: &opencl::Device, over_g2: bool) -> usize {
-    let work_size_multiplier = std::env::var("FIL_ZK_WORK_SIZE_MULTIPLIER")
+    let work_size_multiplier: f64 = std::env::var("FIL_ZK_WORK_SIZE_MULTIPLIER")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FIL_ZK_WORK_SIZE_MULTIPLIER! Defaulting to {}", settings::FILSETTINGS.lock().unwrap().work_size_multiplier as usize);
-                Ok(settings::FILSETTINGS.lock().unwrap().work_size_multiplier as usize)
+                error!("Invalid FIL_ZK_WORK_SIZE_MULTIPLIER! Defaulting to {}", settings::FILSETTINGS.lock().unwrap().work_size_multiplier);
+                Ok(settings::FILSETTINGS.lock().unwrap().work_size_multiplier)
             }
         })
-        .unwrap_or(settings::FILSETTINGS.lock().unwrap().work_size_multiplier as usize);
+        .unwrap_or(settings::FILSETTINGS.lock().unwrap().work_size_multiplier);
 
     // points from G2 have bigger size
     if over_g2 {
-        return get_core_count(d) * work_size_multiplier;
+        return (get_core_count(d) as f64 * work_size_multiplier) as usize;
     }
     // (g2_size + exp_size) / (g1_size + exp_size) = 1.75
     // ((get_core_count(d) as f64) * (work_size_multiplier as f64) * 1.85f64) as usize
 
-    get_core_count(d) * work_size_multiplier * 2
+    (get_core_count(d) as f64 * work_size_multiplier * 2f64) as usize
 }
 
 pub fn try_get_chunk_size(d: &opencl::Device) -> usize {

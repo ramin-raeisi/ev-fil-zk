@@ -3,7 +3,7 @@ use super::utils;
 use crate::bls::{Engine, Bls12};
 use ff::{Field, PrimeField, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
-use log::{error, info};
+use log::{error, info, debug};
 use rust_gpu_tools::*;
 use std::any::TypeId;
 use std::sync::{mpsc, Arc};
@@ -23,20 +23,20 @@ const MEMORY_PADDING: f64 = 0.2f64;
 // Increase GPU memory usage via inner loop, 1 for default value
 //const CHUNK_SIZE_MULTIPLIER: f64 = 2.0;
 
-/*pub fn get_cpu_utilization() -> f64 {
+pub fn get_cpu_utilization() -> f64 {
     std::env::var("FIL_ZK_CPU_UTILIZATION")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FIL_ZK_CPU_UTILIZATION! Defaulting to {}", CPU_UTILIZATION);
-                Ok(CPU_UTILIZATION)
+                error!("Invalid FIL_ZK_CPU_UTILIZATION! Defaulting to {}", settings::FILSETTINGS.lock().unwrap().cpu_utilization);
+                Ok(settings::FILSETTINGS.lock().unwrap().cpu_utilization)
             }
         })
-        .unwrap_or(CPU_UTILIZATION)
+        .unwrap_or(settings::FILSETTINGS.lock().unwrap().cpu_utilization)
         .max(0f64)
         .min(1f64)
         
-}*/
+}
 
 pub fn get_memory_padding() -> f64 {
     std::env::var("FIL_ZK_GPU_MEMORY_PADDING")
@@ -99,7 +99,7 @@ fn calc_window_size(n: usize, exp_bits: usize, work_size: usize) -> usize {
 }
 
 fn calc_best_chunk_size(max_window_size: usize, work_size: usize, exp_bits: usize) -> usize {
-    let chunk_size_multiplier = std::env::var("FIL_ZK_CHUNK_SIZE_MULTIPLIER")
+    let chunk_size_multiplier: f64 = std::env::var("FIL_ZK_CHUNK_SIZE_MULTIPLIER")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
@@ -121,7 +121,7 @@ fn calc_max_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
         E: Engine
 {
     let memory_padding = get_memory_padding();
-    let fil_max_window_cize = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
+    let fil_max_window_size = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
     //let aff_size = std::cmp::max(std::mem::size_of::<E::G1Affine>(), std::mem::size_of::<E::G2Affine>());
     let aff_size =
         if over_g2 { std::mem::size_of::<E::G2Affine>() } else { std::mem::size_of::<E::G1Affine>() };
@@ -129,9 +129,11 @@ fn calc_max_chunk_size<E>(mem: u64, work_size: usize, over_g2: bool) -> usize
     //let proj_size = std::mem::size_of::<E::G1>() + std::mem::size_of::<E::G2>();
     let proj_size =
         if over_g2 { std::mem::size_of::<E::G2>() } else { std::mem::size_of::<E::G1>() };
-    ((((mem as f64) * (1f64 - memory_padding)) as usize)
-        - (work_size * ((1 <<fil_max_window_cize) + 1) * proj_size))
-        / (2 * aff_size + exp_size)
+    let chunk_size = ((((mem as f64) * (1f64 - memory_padding)) as usize)
+        - (work_size * ((1 << fil_max_window_size) + 1) * proj_size))
+        / (2 * aff_size + exp_size);
+    debug!("Memory usage by max chunks size: {}", (2 * aff_size + exp_size) * chunk_size + (work_size * ((1 << fil_max_window_size) + 1) * proj_size) );
+    chunk_size
 }
 
 fn exp_size<E: Engine>() -> usize {
@@ -153,10 +155,10 @@ impl<E> MultiexpKernel<E>
     fn chunk_size_of(program: &opencl::Program, work_size: usize, over_g2: bool) -> usize {
         let exp_bits = exp_size::<E>() * 8;
         let max_n = calc_max_chunk_size::<E>(program.device().memory(), work_size, over_g2);
-        let fil_max_window_cize = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
-        let best_n = calc_best_chunk_size(fil_max_window_cize, work_size, exp_bits);
+        let fil_max_window_size = settings::FILSETTINGS.lock().unwrap().max_window_size as usize;
+        let best_n = calc_best_chunk_size(fil_max_window_size, work_size, exp_bits);
         if max_n < best_n {
-            info!("the best chunks size > max chunk size. Probably, settings are wrong for this machine");
+            info!("the best chunks size > max chunk size ({} / {}). Probably, settings are wrong for this machine", best_n, max_n);
         }
         std::cmp::min(max_n, best_n)
     }
@@ -283,7 +285,7 @@ impl<E> MultiexpKernel<E>
 
         // use cpu for parallel calculations
         //let mut cpu_n = ((n as f64) * get_cpu_utilization()) as usize;
-        let cpu_util = settings::FILSETTINGS.lock().unwrap().cpu_utilization;
+        let cpu_util = get_cpu_utilization();
         let mut cpu_n = ((n as f64) * cpu_util) as usize;
         if n < 10000 {
             cpu_n = n;
