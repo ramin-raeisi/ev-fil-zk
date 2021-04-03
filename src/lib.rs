@@ -452,7 +452,7 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn aggregate) in not implemented for {}", std::any::type_name::<Self>())
     }
 
-    fn align_variable(&mut self, _v: &mut Variable, _shift: usize) {
+    fn align_variable(&mut self, _v: &mut Variable, _input_shift: usize, _aux_shift: usize) {
         panic!("parallel functional (fn align_variable) in not implemented for {}", std::any::type_name::<Self>())
     }
 
@@ -549,8 +549,8 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
         self.0.aggregate(other)
     }
 
-    fn align_variable(&mut self, v: &mut Variable, shift: usize) {
-        self.0.align_variable(v, shift);
+    fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize) {
+        self.0.align_variable(v, input_shift, aux_shift);
     }
 
     fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
@@ -641,8 +641,8 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
         (**self).aggregate(other)
     }
 
-    fn align_variable(&mut self, v: &mut Variable, shift: usize) {
-        (**self).align_variable(v, shift);
+    fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize) {
+        (**self).align_variable(v, input_shift, aux_shift);
     }
 
     fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {

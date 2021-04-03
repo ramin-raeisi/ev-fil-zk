@@ -269,13 +269,13 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         }
     }
 
-    fn align_variable(&mut self, v: &mut Variable, shift: usize) {
+    fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize,) {
         match v {
             Variable(Index::Input(i)) => {
-                *v = Variable(Index::Input(self.input_assignment.len() + *i - 1 - shift));
+                *v = Variable(Index::Input(self.input_assignment.len() + *i - input_shift));
             }
             Variable(Index::Aux(i)) => {
-                *v = Variable(Index::Aux(self.aux_assignment.len() + *i - shift));
+                *v = Variable(Index::Aux(self.aux_assignment.len() + *i - aux_shift));
             }
         }
     }
@@ -683,17 +683,17 @@ mod tests {
                 let last_partial = partial_assignments.split_off(pa_n - 1);
 
                 for (i, other_cs) in partial_assignments.into_iter().enumerate() {
-                    base_partial.align_variable(&mut parents[i], 1);
+                    base_partial.align_variable(&mut parents[i], 1, 1);
                     base_partial.aggregate(vec![other_cs]); // aggregate all CSs exept the last one
                 }
 
                 for (i, other_cs) in partial_assignments2.into_iter().enumerate() {
-                    base_partial.align_variable(&mut parents[i], 1);
+                    base_partial.align_variable(&mut parents[i], 1, 1);
                     base_partial2.aggregate(vec![other_cs]); // aggregate all CSs exept the last one
                 }
 
-                base_partial.align_variable(&mut y_var_part, 0); // align variables form the last CS
-                base_partial.align_variable(&mut z_var_part, 0);
+                base_partial.align_variable(&mut y_var_part, 0, 0); // align variables form the last CS
+                base_partial.align_variable(&mut z_var_part, 0, 0);
                 base_partial.aggregate(last_partial);
 
                 full_assignment.enforce(|| "y_enforce", |lc| lc + y_var_ful, |lc| lc + z_var_ful, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
