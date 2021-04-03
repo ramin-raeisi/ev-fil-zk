@@ -17,7 +17,7 @@ use crate::multiexp::{multiexp_cpu}; // for cpu-based parallel computations
 
 //const MAX_WINDOW_SIZE: usize = 10;
 const LOCAL_WORK_SIZE: usize = 256;
-const MEMORY_PADDING: f64 = 0.2f64;
+const MEMORY_PADDING: f64 = 0.1f64;
 // Let 20% of GPU memory be free
 //const CPU_UTILIZATION: f64 = 0.2;
 // Increase GPU memory usage via inner loop, 1 for default value
