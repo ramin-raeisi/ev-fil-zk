@@ -43,7 +43,7 @@ pub fn get_memory_padding() -> f64 {
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
-                error!("Invalid FIL_ZK_MEMORY_PADDING! Defaulting to {}", MEMORY_PADDING);
+                error!("Invalid FIL_ZK_GPU_MEMORY_PADDING! Defaulting to {}", MEMORY_PADDING);
                 Ok(MEMORY_PADDING)
             }
         })
