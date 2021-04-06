@@ -286,6 +286,19 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         }
     }
 
+    fn print_index(&mut self, v: &mut Variable,) {
+        match v {
+            Variable(Index::Input(i)) => {
+                info!("index = {}, input = {}", i, self.input_assignment.len());
+
+            }
+            Variable(Index::Aux(i)) => {
+                info!("index = {}, aux = {}", i , self.aux_assignment.len());
+
+            }
+        }
+    }
+
     fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
         match v {
             Variable(Index::Input(i)) => {

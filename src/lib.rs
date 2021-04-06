@@ -456,6 +456,10 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn align_variable) in not implemented for {}", std::any::type_name::<Self>())
     }
 
+    fn print_index(&mut self, _v: &mut Variable) {
+        panic!("parallel functional (fn print_index) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
     fn deallocate(&mut self, _v: Variable) -> Result<(), SynthesisError> {
         panic!("parallel functional (fn deallocate) in not implemented for {}", std::any::type_name::<Self>())
     }
@@ -553,6 +557,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
         self.0.align_variable(v, input_shift, aux_shift);
     }
 
+    fn print_index(&mut self, v: &mut Variable) {
+        self.0.print_index(v);
+    }
+
     fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
         self.0.deallocate(v)
     }
@@ -643,6 +651,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize) {
         (**self).align_variable(v, input_shift, aux_shift);
+    }
+
+    fn print_index(&mut self, v: &mut Variable) {
+        (**self).print_index(v);
     }
 
     fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
