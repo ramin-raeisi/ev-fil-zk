@@ -272,10 +272,12 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize,) {
         match v {
             Variable(Index::Input(i)) => {
-                *v = Variable(Index::Input(self.input_assignment.len() + *i - input_shift));
+                //*v = Variable(Index::Input(self.input_assignment.len() + *i - input_shift));
+                *v = Variable(Index::Input(self.input_assignment.len() + input_shift));
             }
             Variable(Index::Aux(i)) => {
-                *v = Variable(Index::Aux(self.aux_assignment.len() + *i - aux_shift));
+                //*v = Variable(Index::Aux(self.aux_assignment.len() + *i - aux_shift));
+                *v = Variable(Index::Aux(self.aux_assignment.len() + aux_shift));
             }
         }
     }
@@ -683,25 +685,25 @@ mod tests {
                 let last_partial = partial_assignments.split_off(pa_n - 1);
 
                 for (i, other_cs) in partial_assignments.into_iter().enumerate() {
-                    base_partial.align_variable(&mut parents[i], 1, 1);
+                    base_partial.align_variable(&mut parents[i], 4, 1);
                     base_partial.aggregate(vec![other_cs]); // aggregate all CSs exept the last one
                 }
 
                 for (i, other_cs) in partial_assignments2.into_iter().enumerate() {
-                    base_partial.align_variable(&mut parents[i], 1, 1);
+                    base_partial.align_variable(&mut parents[i], 1, 0);
                     base_partial2.aggregate(vec![other_cs]); // aggregate all CSs exept the last one
                 }
 
-                base_partial.align_variable(&mut y_var_part, 0, 0); // align variables form the last CS
-                base_partial.align_variable(&mut z_var_part, 0, 0);
+                base_partial.align_variable(&mut y_var_part, 1, 0); // align variables form the last CS
+                base_partial.align_variable(&mut z_var_part, 1, 0);
                 base_partial.aggregate(last_partial);
 
                 full_assignment.enforce(|| "y_enforce", |lc| lc + y_var_ful, |lc| lc + z_var_ful, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
                 base_partial.enforce(|| "y_enforce", |lc| lc + y_var_part, |lc| lc + z_var_part, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
-                for j in 0..3 {
-                    full_assignment.enforce(|| "y_enforce", |lc| lc + parents[j] , |lc| lc + parents[count + j], |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
+                //for j in 0..3 {
+                //    full_assignment.enforce(|| "y_enforce", |lc| lc + parents[j] , |lc| lc + parents[count + j], |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
                     //base_partial.enforce(|| "y_enforce", |lc| lc + parents[j], |lc| lc + parents[count + j], |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
-                } 
+               // } 
                 assert_eq!(full_assignment, base_partial);
             }
         }
