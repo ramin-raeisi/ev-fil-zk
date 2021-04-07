@@ -280,10 +280,14 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             Variable(Index::Aux(i)) => {
                 info!("index = {}, new index = {}", i , self.aux_assignment.len() + aux_shift);
                 //*v = Variable(Index::Aux(self.aux_assignment.len() + *i - aux_shift));
-                *v = Variable(Index::Aux(self.aux_assignment.len() + aux_shift));
+                *v = Variable(Index::Aux(aux_shift));
 
             }
         }
+    }
+
+    fn get_aux_assigment_len(&mut self,) -> usize {
+        self.aux_assignment.len()
     }
 
     fn print_index(&mut self, v: &mut Variable,) {
