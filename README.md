@@ -31,7 +31,7 @@ The gpu extension contains some env vars that may be set externally to this libr
 
 - `FIL_ZK_CUSTOM_GPU`
 
-    Allows adding a GPU that is not in the tested list. This requires researching the name of the GPU device and the number of cores in the format ["name:cores"].
+    Allows adding a GPU that is not in the tested list. This requires providing the name of the GPU device and the number of cores in the format ["name:cores"].
 
     ```rust
     // Example
@@ -55,14 +55,12 @@ The gpu extension contains some env vars that may be set externally to this libr
     - Possible values: `0, 1`
     - Default value: `0`
 
-    Defines is GPUs are used during FFT (commit2 phase) or not. FIL_ZK_DISABLE_FFT_GPU=1 uses pure CPU calculations for FFT that can decrease the overall commit2 phase time. 
+    Defines is GPUs are used during FFT (commit2 phase) or not. FIL_ZK_DISABLE_FFT_GPU=1 uses pure CPU calculations for FFT that increases the overall commit2 phase time. 
 
     ```rust
     // Example
     env::set_var("FIL_ZK_DISABLE_FFT_GPU", "1");
     ```
-
-    
 
 - `FIL_ZK_GPU_MEMORY_PADDING`
 
@@ -95,6 +93,7 @@ The gpu extension contains some env vars that may be set externally to this libr
     - Possible values: `[5, 17]` (integer)
     - Default value: `10`
     
+
 Defines the window size for the multi-exponentiation algorithm. A higher value means more serial work in each parallel thread (thus fewer parallel GPU threads in general). 
     
 **Important note:** The variable defines the *maximum* window size. The algorithm uses a smaller window size if it's enough for optimal performance.
@@ -102,8 +101,8 @@ Defines the window size for the multi-exponentiation algorithm. A higher value m
 ```rust
     // Example
     env::set_var("FIL_ZK_MAX_WINDOW", "12");
-    ```
-    
+```
+
 - `FIL_ZK_WORK_SIZE_MULTIPLIER`
 
     - Possible values: `[0.1, 10]` (float)
