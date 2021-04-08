@@ -278,7 +278,7 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
 
             }
             Variable(Index::Aux(i)) => {
-                info!("index = {}, new index = {}", i , self.aux_assignment.len() + aux_shift);
+                info!("index = {}, new index = {}", i , aux_shift);
                 //*v = Variable(Index::Aux(self.aux_assignment.len() + *i - aux_shift));
                 *v = Variable(Index::Aux(aux_shift));
 
