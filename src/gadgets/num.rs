@@ -358,6 +358,10 @@ impl<E: ScalarEngine> AllocatedNum<E> {
     pub fn get_variable(&self) -> Variable {
         self.variable
     }
+
+    pub fn get_mut_variable(&mut self) -> &mut Variable {
+        &mut self.variable
+    }
 }
 
 #[derive(Clone)]
