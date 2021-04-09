@@ -272,9 +272,9 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize,) {
         match v {
             Variable(Index::Input(i)) => {
-                info!("index = {}, new index = {}", i, self.input_assignment.len() + input_shift);
+                info!("index = {}, new index = {}", i, input_shift);
                 //*v = Variable(Index::Input(self.input_assignment.len() + *i - input_shift));
-                *v = Variable(Index::Input(self.input_assignment.len() + input_shift));
+                *v = Variable(Index::Input(input_shift));
 
             }
             Variable(Index::Aux(i)) => {
