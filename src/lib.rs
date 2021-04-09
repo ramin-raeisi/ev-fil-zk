@@ -460,6 +460,10 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn get_aux_assigment_len) in not implemented for {}", std::any::type_name::<Self>())
     }
 
+    fn get_index(&mut self, v: &mut Variable,) -> usize{
+        panic!("parallel functional (fn get_aux_assigment_len) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
     fn print_index(&mut self, _v: &mut Variable) {
         panic!("parallel functional (fn print_index) in not implemented for {}", std::any::type_name::<Self>())
     }
@@ -565,6 +569,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
         self.0.get_aux_assigment_len()
     }
 
+    fn get_index(&mut self, v: &mut Variable,) -> usize {
+        self.0.get_index(v)
+    }
+
     fn print_index(&mut self, v: &mut Variable) {
         self.0.print_index(v);
     }
@@ -663,6 +671,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn get_aux_assigment_len(&mut self) -> usize {
         (**self).get_aux_assigment_len()
+    }
+
+    fn get_index(&mut self,  v: &mut Variable) -> usize {
+        (**self).get_index(v)
     }
 
     fn print_index(&mut self, v: &mut Variable) {
