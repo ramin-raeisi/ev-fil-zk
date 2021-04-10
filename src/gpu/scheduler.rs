@@ -64,14 +64,23 @@ impl DevicePool {
 
 lazy_static! {
     pub static ref DEVICE_POOL: DevicePool = DevicePool::new();
+    pub static ref DEVICE_POOL_FIL_PROOFS: DevicePool = DevicePool::new();
 }
 
 pub static mut DEVICE_NUM: usize = 0;
+pub static mut DEVICE_NUM_FIL_PROOFS: usize = 0;
 
 pub fn get_next_device() -> &'static Mutex<cl::Program> {
     unsafe {
         DEVICE_NUM = (DEVICE_NUM + 1) % DEVICE_POOL.devices.len();
         return &DEVICE_POOL.devices[DEVICE_NUM];
+    }
+}
+
+pub fn get_next_device_second_pool() -> &'static Mutex<cl::Program> {
+    unsafe {
+        DEVICE_NUM_FIL_PROOFS = (DEVICE_NUM_FIL_PROOFS + 1) % DEVICE_POOL_FIL_PROOFS.devices.len();
+        return &DEVICE_POOL_FIL_PROOFS.devices[DEVICE_NUM_FIL_PROOFS];
     }
 }
 
