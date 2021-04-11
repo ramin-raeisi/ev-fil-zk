@@ -2,7 +2,7 @@
 
 use ff::{BitIterator, Field, PrimeField, PrimeFieldRepr, ScalarEngine};
 
-use crate::{ConstraintSystem, LinearCombination, SynthesisError, Variable};
+use crate::{ConstraintSystem, LinearCombination, SynthesisError, Variable, Index};
 
 use super::Assignment;
 
@@ -44,6 +44,13 @@ impl<E: ScalarEngine> AllocatedNum<E> {
             value: new_value,
             variable: var,
         })
+    }
+
+    pub fn empty() -> Self {
+        AllocatedNum {
+            value: None,
+            variable: Variable::new_unchecked(Index::Aux(0)),
+        }
     }
 
     pub fn inputize<CS>(&self, mut cs: CS) -> Result<(), SynthesisError>
