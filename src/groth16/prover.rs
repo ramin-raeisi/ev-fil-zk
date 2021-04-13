@@ -13,8 +13,10 @@ use crate::{
     Circuit, ConstraintSystem, Index, LinearCombination, SynthesisError, Variable,
 };
 use futures::future::Future;
-use log::info;
+use log::{info, error};
 use crate::gpu::{DEVICE_POOL};
+
+mod prover_preload;
 
 fn eval<E: Engine>(
     lc: &LinearCombination<E>,
@@ -343,6 +345,33 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
 }
 
 pub fn create_proof_batch<E, C, P: ParameterGetter<E>>(
+    circuits: Vec<C>,
+    params: P,
+) -> Result<Vec<Proof<E>>, SynthesisError>
+    where
+        E: Engine,
+        C: Circuit<E> + Send,
+{
+
+    use crate::groth16::prover::prover_preload::create_proof_batch_preload;
+
+    let params_preload = std::env::var("FIL_ZK_PARAMS_PRELOAD")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FIL_ZK_PARAMS_PRELOAD! Defaulting to {}", 0);
+                Ok(0)
+            }
+        })
+        .unwrap_or(0);
+
+    if params_preload == 0 {
+        return create_proof_batch_inner(circuits, params);
+    }
+    create_proof_batch_preload(circuits, params)
+}
+
+fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
     circuits: Vec<C>,
     params: P,
 ) -> Result<Vec<Proof<E>>, SynthesisError>
