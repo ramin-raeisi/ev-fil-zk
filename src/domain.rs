@@ -25,6 +25,18 @@ use rayon::iter::{ParallelIterator, IndexedParallelIterator, IntoParallelRefMutI
 
 use log::{info, warn, error};
 
+fn get_disble_gpu() -> usize {
+    std::env::var("FIL_ZK_DISABLE_FFT_GPU")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FIL_ZK_DISABLE_FFT_GPU! Defaulting to 0...");
+                Ok(0)
+            }
+        })
+        .unwrap_or(0)
+}
+
 pub struct EvaluationDomain<E: ScalarEngine, G: Group<E>> {
     coeffs: Vec<G>,
     exp: u32,
@@ -128,23 +140,25 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
     }
 
     pub fn distribute_powers(&mut self, g: E::Fr, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
-        if let Some(ref _devices) = devices {
-            gpu_distribute_powers(&mut self.coeffs, &g, self.exp)?;
-        } else {
-            let chunk_size = if self.coeffs.len() < current_num_threads() {
-                1
-            } else {
-                self.coeffs.len() / current_num_threads()
-            };
-
-            self.coeffs.par_chunks_mut(chunk_size).enumerate().for_each(|(i, chunk)| {
-                let mut u = g.pow(&[(i * chunk_size) as u64]);
-                for v in chunk.iter_mut() {
-                    v.group_mul_assign(&u);
-                    u.mul_assign(&g);
-                }
-            });
+        if get_disble_gpu() == 0 {
+            if let Some(ref _devices) = devices {
+                gpu_distribute_powers(&mut self.coeffs, &g, self.exp)?;
+                return Ok(());
+            }
         }
+        let chunk_size = if self.coeffs.len() < current_num_threads() {
+            1
+        } else {
+            self.coeffs.len() / current_num_threads()
+        };
+
+        self.coeffs.par_chunks_mut(chunk_size).enumerate().for_each(|(i, chunk)| {
+            let mut u = g.pow(&[(i * chunk_size) as u64]);
+            for v in chunk.iter_mut() {
+                v.group_mul_assign(&u);
+                u.mul_assign(&g);
+            }
+        });
         Ok(())
     }
 
@@ -196,24 +210,26 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
     /// Perform O(n) multiplication of two polynomials in the domain.
     pub fn mul_assign(&mut self, other: &EvaluationDomain<E, Scalar<E>>, devices: Option<&gpu::DevicePool>) -> gpu::GPUResult<()> {
         assert_eq!(self.coeffs.len(), other.coeffs.len());
-        if let Some(ref _devices) = devices {
-            let n = self.coeffs.len();
-            gpu_mul(&mut self.coeffs, &other.coeffs, n)?;
-        } else {
-            let chunk_size = if self.coeffs.len() < current_num_threads() {
-                1
-            } else {
-                self.coeffs.len() / current_num_threads()
-            };
-
-            self.coeffs.par_chunks_mut(chunk_size)
-                .zip(other.coeffs.par_chunks(chunk_size))
-                .for_each(|(chunk, other_chunk)| {
-                    for (a, b) in chunk.iter_mut().zip(other_chunk.iter()) {
-                        a.group_mul_assign(&b.0);
-                    }
-                });
+        if get_disble_gpu() == 0 {
+            if let Some(ref _devices) = devices {
+                let n = self.coeffs.len();
+                gpu_mul(&mut self.coeffs, &other.coeffs, n)?;
+                return Ok(());
+            }
         }
+        let chunk_size = if self.coeffs.len() < current_num_threads() {
+            1
+        } else {
+            self.coeffs.len() / current_num_threads()
+        };
+
+        self.coeffs.par_chunks_mut(chunk_size)
+            .zip(other.coeffs.par_chunks(chunk_size))
+            .for_each(|(chunk, other_chunk)| {
+                for (a, b) in chunk.iter_mut().zip(other_chunk.iter()) {
+                    a.group_mul_assign(&b.0);
+                }
+            });
         Ok(())
     }
 
@@ -223,23 +239,25 @@ impl<E: Engine, G: Group<E>> EvaluationDomain<E, G> {
         let len = self.coeffs.len();
         assert_eq!(len, other.coeffs.len());
 
-        if let Some(ref _devices) = devices {
-            gpu_sub(&mut self.coeffs, &other.coeffs, len)?;
-        } else {
-            let chunk_size = if len < current_num_threads() {
-                1
-            } else {
-                len / current_num_threads()
-            };
-
-            self.coeffs.par_chunks_mut(chunk_size)
-                .zip(other.coeffs.par_chunks(chunk_size))
-                .for_each(|(chunk, other_chunk)| {
-                    for (a, b) in chunk.iter_mut().zip(other_chunk.iter()) {
-                        a.group_sub_assign(&b);
-                    }
-                });
+        if get_disble_gpu() == 0 {
+            if let Some(ref _devices) = devices {
+                gpu_sub(&mut self.coeffs, &other.coeffs, len)?;
+                return Ok(());
+            }
         }
+        let chunk_size = if len < current_num_threads() {
+            1
+        } else {
+            len / current_num_threads()
+        };
+
+        self.coeffs.par_chunks_mut(chunk_size)
+            .zip(other.coeffs.par_chunks(chunk_size))
+            .for_each(|(chunk, other_chunk)| {
+                for (a, b) in chunk.iter_mut().zip(other_chunk.iter()) {
+                    a.group_sub_assign(&b);
+                }
+            });
         Ok(())
     }
 }
@@ -331,15 +349,7 @@ fn best_fft<E: Engine, T: Group<E>>(
     omega: &E::Fr,
     log_n: u32,
 ) -> gpu::GPUResult<()> {
-    let disable_gpu: usize = std::env::var("FIL_ZK_DISABLE_FFT_GPU")
-        .and_then(|v| match v.parse() {
-            Ok(val) => Ok(val),
-            Err(_) => {
-                error!("Invalid FIL_ZK_DISABLE_FFT_GPU! Defaulting to 0...");
-                Ok(0)
-            }
-        })
-        .unwrap_or(0);
+    let disable_gpu: usize = get_disble_gpu();
 
     if 1u32 << log_n < 2 << 18 {
         warn!("FFT elements amount is small (<= 2^18). GPU data transfer may probably take \
