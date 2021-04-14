@@ -27,43 +27,108 @@ This fork contains GPU parallel acceleration to the FFT and Multiexponentation a
 
 ### Environment variables
 
-The gpu extension contains some env vars that may be set externally to this library.
-
-- `BELLMAN_NO_GPU`
-
-    Will disable the GPU feature from the library and force usage of the CPU.
-
-    ```rust
-    // Example
-    env::set_var("BELLMAN_NO_GPU", "1");
-    ```
-
-- `BELLMAN_VERIFIER`
-
-    Chooses the device in which the batched verifier is going to run. Can be `cpu`, `gpu` or `auto`.
-
-    ```rust
-    Example
-    env::set_var("BELLMAN_VERIFIER", "gpu");
-    ```
+The gpu extension contains some env vars that may be set externally to this library. 
 
 - `FIL_ZK_CUSTOM_GPU`
 
-    Will allow for adding a GPU not in the tested list. This requires researching the name of the GPU device and the number of cores in the format `["name:cores"]`.
+    Allows adding a GPU that is not in the tested list. This requires providing the name of the GPU device and the number of cores in the format ["name:cores"].
 
     ```rust
     // Example
     env::set_var("FIL_ZK_CUSTOM_GPU", "GeForce RTX 2080 Ti:4352, GeForce GTX 1060:1280");
     ```
 
-- `BELLMAN_CPU_UTILIZATION`
+- `FIL_ZK_CPU_UTILIZATION`
 
-    Can be set in the interval [0,1] to designate a proportion of the multiexponenation calculation to be moved to cpu in parallel to the GPU to keep all hardware occupied.
+    - Possible values: `[0, 1]` (float)
+    - Default value: `0.2`
+
+    The proportion of the multi-exponentiation calculation (commit2 phase) that will be moved to CPU in parallel to the GPU. For example, 0.1 = 10% of the calculations are proceeding on CPU. It allows keeping all hardware occupied and decreases C2 timings. To get the best performance, the value of the variable must be higher for configuration with good CPU and weak GPU and vice versa. 
 
     ```rust
     // Example
-    env::set_var("BELLMAN_CPU_UTILIZATION", "0.5");
+    env::set_var("FIL_ZK_CPU_UTILIZATION", "0.05");
     ```
+
+- `FIL_ZK_DISABLE_FFT_GPU`
+
+    - Possible values: `0, 1`
+    - Default value: `0`
+
+    Defines is GPUs are used during FFT (commit2 phase) or not. FIL_ZK_DISABLE_FFT_GPU=1 uses pure CPU calculations for FFT that increases the overall commit2 phase time. 
+
+    ```rust
+    // Example
+    env::set_var("FIL_ZK_DISABLE_FFT_GPU", "1");
+    ```
+
+- `FIL_ZK_GPU_MEMORY_PADDING`
+
+    - Possible values: `[0, 1]` (float)
+    - Default value: `0.1`
+
+    Determines the proportion of free memory, e.g. 0.1 ≅ 10% (not exactly, but close) of free GPU memory during commit2 phase.
+
+    __Important note:__ commit2 phase contains two different algorithms that use GPU: FFT and multi-exponentiation. Currently, `FIL_ZK_GPU_MEMORY_PADDING` restricts only multi-exponentiation algorithm. However, FFT uses less GPU memory than mutli-exponentiation so the variable may be used to make the GPU memory consumption eqaul between these algorithms. 
+
+    ```rust
+    // Example
+    env::set_var("FIL_ZK_GPU_MEMORY_PADDING", "0.35");
+    ```
+
+- `FIL_ZK_PARAMS_PRELOAD`
+
+    - Possible values: `0, 1`
+    - Default value: `0`
+
+    Defines the implementation of Groth's SNARK proof that is used in commit2-phase. 1 use the implementation with preloaded data for all SNARK protocol. It increases the amount of used RAM but decreases the proof time. The time-bonus obtained from the preloaded data depends on the hardware and should be tested in practice. 
+
+    ```rust
+    // Example
+    env::set_var("FIL_ZK_PARAMS_PRELOAD", "1");
+    ```
+
+- `FIL_ZK_MAX_WINDOW`
+
+    - Possible values: `[5, 17]` (integer)
+    - Default value: `10`
+    
+
+Defines the window size for the multi-exponentiation algorithm. A higher value means more serial work in each parallel thread (thus fewer parallel GPU threads in general). 
+    
+**Important note:** The variable defines the *maximum* window size. The algorithm uses a smaller window size if it's enough for optimal performance.
+    
+```rust
+    // Example
+    env::set_var("FIL_ZK_MAX_WINDOW", "12");
+```
+
+- `FIL_ZK_WORK_SIZE_MULTIPLIER`
+
+    - Possible values: `[0.1, 10]` (float)
+    - Default value: `2`
+
+    Defines the multiplier for GPU load as the number of simultaneous threads. The higher values of the variable - the more threads. 
+
+    ```rust
+    // Example
+    env::set_var("FIL_ZK_WORK_SIZE_MULTIPLIER", "1.2");
+    ```
+
+- `FIL_ZK_CHUNK_SIZE_MULTIPLIER`
+
+    - Possible values: `[1, 10]` (float)
+    - Default value: `2`
+
+    Defines the multiplier for GPU memory usage. The higher values of the variable - the more GPU memory is occupied by each thread of the multi-exponentiation algorithm of the commit2 phase.
+    Allows controlling the amount of data proceeded by each thread without changing the overall amount of threads (unlike `FIL_ZK_MAX_WINDOW` and `FIL_ZK_WORK_SIZE_MULTIPLIER`). 
+
+    ```rust
+    // Example
+    env::set_var("FIL_ZK_CHUNK_SIZE_MULTIPLIER", "2.5");
+    ```
+
+    
 
 #### Supported / Tested Cards
 
