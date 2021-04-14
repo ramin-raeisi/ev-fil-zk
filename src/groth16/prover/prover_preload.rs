@@ -14,7 +14,7 @@ use crate::{
     Circuit, ConstraintSystem, Index, SynthesisError, Variable,
 };
 use futures::future::Future;
-use log::{info, debug};
+use log::info;
 use crate::gpu::{DEVICE_POOL};
 use super::super::prover::ProvingAssignment;
 
@@ -71,46 +71,32 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
     let (tx_bg2, rx_bg2) = mpsc::channel();
     let (tx_input_assignments, rx_input_assignments) = mpsc::channel();
     let (tx_aux_assignments, rx_aux_assignments) = mpsc::channel();
-    debug!("params preload scope start");
     crossbeam::scope(|s| {
         let mut threads = Vec::new();
         let params = &params;
         let provers = &mut provers;
         // h_params
         threads.push(s.spawn(move |_| {
-            debug!("h_params preload start");
             let h_params = params.get_h().unwrap();
-            debug!("h_params send");
             tx_h.send(h_params).unwrap();
-            debug!("h_params preload end");
         }));
         // l_params
         threads.push(s.spawn(move |_| {
-            debug!("l_params preload start");
             let l_params = params.get_l().unwrap();
-            debug!("l_params send");
             tx_l.send(l_params).unwrap();
-            debug!("l_params preload end");
         }));
         // a_params
         threads.push(s.spawn(move |_| {
-            debug!("a_params preload start");
             let a_base = params.get_a().unwrap();
-            debug!("a_params send");
             tx_a.send(a_base).unwrap();
-            debug!("a_params preload end");
         }));
         // bg2_params
         threads.push(s.spawn(move |_| {
-            debug!("bg2_params preload start");
             let b_g2_base = params.get_b_g2().unwrap();
-            debug!("bg2_params send");
             tx_bg2.send(b_g2_base).unwrap();
-            debug!("bg2_params preload end");
         }));
         // assignments
         threads.push(s.spawn(move |_| {
-            debug!("input assigments preload start");
             let input_assignments = provers	
                 .par_iter_mut()	
                 .map(|prover| {	
@@ -123,11 +109,8 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
                     )	
                 })	
                 .collect::<Vec<_>>();
-            debug!("input assigments send");
             tx_input_assignments.send(input_assignments).unwrap();
-            debug!("input assigments preload end");
 
-            debug!("aux assigments preload start");
             let aux_assignments = provers	
                 .par_iter_mut()	
                 .map(|prover| {	
@@ -140,9 +123,7 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
                     )	
                 })	
                 .collect::<Vec<_>>();
-            debug!("aux_assigments send");
             tx_aux_assignments.send(aux_assignments).unwrap();
-            debug!("aux assigments preload end");
         }));
 
         for t in threads {
@@ -150,17 +131,11 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
         }
     }).unwrap();
     let h_base = rx_h.recv().unwrap();
-    debug!("h_base recieved");
     let l_base = rx_l.recv().unwrap();
-    debug!("l_base recieved");
     let a_base = rx_a.recv().unwrap();
-    debug!("a_base recieved");
     let b_g2_base = rx_bg2.recv().unwrap();
-    debug!("b_g2_base recieved");
     let input_assignments = rx_input_assignments.recv().unwrap();
-    debug!("input_assigments recieved");
     let aux_assignments = rx_aux_assignments.recv().unwrap();
-    debug!("aux_assigments recieved");
     info!("params preload time: {:?}", now.elapsed());
 
     info!("starting fft + multiexp phases in parallel");
@@ -172,12 +147,10 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
     let (tx_a_s, rx_a_s) = mpsc::sync_channel(1);
 
     crossbeam::scope(|s| {
-        debug!("start a_s / l_s");
         let mut threads = Vec::new();
         let provers_a = &mut provers;
         // a_s
         threads.push(s.spawn(move |_| {
-            debug!("start a_s");
             let tx_a_s = tx_a_s.clone();
             let a_s = provers_a
             .par_iter_mut()
@@ -216,14 +189,11 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
             })
             .collect::<Result<Vec<_>, SynthesisError>>().unwrap();
 
-            debug!("send a_s");
             tx_a_s.send(a_s).unwrap();
-            debug!("end a_s");
         }));
 
         // l_s
         threads.push(s.spawn(|_| {
-            debug!("start l_s");
             let l_skip = 0;
             let aux_assignments_arc = aux_assignments.clone();
             let l_s = aux_assignments_arc
@@ -236,23 +206,19 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
                         aux_assignment.len(),
                         Some(&DEVICE_POOL))
                 }).collect::<Vec<_>>();
-            debug!("send l_s");
+            
             tx_l_s.send(l_s).unwrap();
-            debug!("end l_s");
         }));
         
         for t in threads {
             t.join().unwrap();
         }
-        debug!("end a_s / l_s");
     }).unwrap();
 
     crossbeam::scope(|s| {
-        debug!("start inputs / h_s");
         let mut threads = Vec::new();
         // inputs
         threads.push(s.spawn(|_| {
-            debug!("start inputs");
             let inputs = provers
             .par_iter()
             .zip(input_assignments.par_iter())
@@ -323,16 +289,12 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
             })
             .collect::<Result<Vec<_>, SynthesisError>>().unwrap();
 
-            debug!("send inputs");
             tx_inputs.send(inputs).unwrap();
-            debug!("end inputs");
         }));
 
         // h_s
         threads.push(s.spawn(move |_| {
-            debug!("start h_s");
             let a_s = rx_a_s.recv().unwrap();
-            debug!("a_s recieved");
             let h_skip = 0;
             let h_s = a_s
                 .into_par_iter()
@@ -346,27 +308,20 @@ pub fn create_proof_batch_preload<E, C, P: ParameterGetter<E>>(
                 })
                 .collect::<Vec<_>>();
 
-            debug!("send h_s");
             tx_h_s.send(h_s).unwrap();
-            debug!("end h_s");
         }));
 
         for t in threads {
             t.join().unwrap();
         }
-        debug!("end inputs / h_s");
     }).unwrap();
 
     let l_s = rx_l_s.recv().unwrap();
-    debug!("l_s recieved");
     let inputs = rx_inputs.recv().unwrap();
-    debug!("inputs recieved");
     let h_s = rx_h_s.recv().unwrap();
-    debug!("h_s recieved");
 
     info!("fft + multiexp phases time: {:?}", now.elapsed());
 
-    debug!("proofs calculation");
     let proofs = //h_s_l_s.into_par_iter()
         h_s.into_par_iter()
         .zip(l_s.into_par_iter())

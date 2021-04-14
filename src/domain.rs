@@ -23,7 +23,7 @@ use rayon::current_num_threads;
 use rayon::slice::{ParallelSliceMut, ParallelSlice};
 use rayon::iter::{ParallelIterator, IndexedParallelIterator, IntoParallelRefMutIterator};
 
-use log::{warn, error};
+use log::{info, warn, error};
 
 pub struct EvaluationDomain<E: ScalarEngine, G: Group<E>> {
     coeffs: Vec<G>,
@@ -331,15 +331,15 @@ fn best_fft<E: Engine, T: Group<E>>(
     omega: &E::Fr,
     log_n: u32,
 ) -> gpu::GPUResult<()> {
-    let enable_gpu_fft: bool = std::env::var("FIL_ZK_DISABLE_FFT_GPU")
+    let disable_gpu: usize = std::env::var("FIL_ZK_DISABLE_FFT_GPU")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
                 error!("Invalid FIL_ZK_DISABLE_FFT_GPU! Defaulting to 0...");
-                Ok(true)
+                Ok(0)
             }
         })
-        .unwrap_or(true);
+        .unwrap_or(0);
 
     if 1u32 << log_n < 2 << 18 {
         warn!("FFT elements amount is small (<= 2^18). GPU data transfer may probably take \
@@ -347,7 +347,7 @@ fn best_fft<E: Engine, T: Group<E>>(
             variable FIL_ZK_DISABLE_FFT_GPU=1");
     }
 
-    if enable_gpu_fft {
+    if disable_gpu == 0 {
         if let Some(ref _devices) = devices {
             match gpu_fft(a, omega, log_n) {
                 Ok(_) => {
