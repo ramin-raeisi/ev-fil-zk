@@ -440,6 +440,12 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         );
     }
 
+    fn extend_without_inputs(&mut self, _other: Self) {
+        unimplemented!(
+            "ConstraintSystem::extend_without_inputs must be implemented for types implementing ConstraintSystem"
+        );
+    }
+
     // Create a vector of CSs with the same porperties
     // Later these CSs can be aggregated to the one
     // It allows to calculate synthesize-functions in parallel for several copies of the CS and later aggregate them
@@ -452,6 +458,10 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn aggregate) in not implemented for {}", std::any::type_name::<Self>())
     }
 
+    fn aggregate_without_inputs(&mut self, _other: Vec<Self::Root>) {
+        panic!("parallel functional (fn aggregate_without_inputs) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
     fn align_variable(&mut self, _v: &mut Variable, _input_shift: usize, _aux_shift: usize) {
         panic!("parallel functional (fn align_variable) in not implemented for {}", std::any::type_name::<Self>())
     }
@@ -461,7 +471,7 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
     }
 
     fn get_index(&mut self, v: &mut Variable,) -> usize{
-        panic!("parallel functional (fn get_aux_assigment_len) in not implemented for {}", std::any::type_name::<Self>())
+        panic!("parallel functional (fn get_index) in not implemented for {}", std::any::type_name::<Self>())
     }
 
     fn print_index(&mut self, _v: &mut Variable) {
@@ -559,6 +569,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
     // Aggregate all data from other to self
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         self.0.aggregate(other)
+    }
+
+    fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
+        self.0.aggregate_without_inputs(other)
     }
 
     fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize) {
@@ -663,6 +677,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
     // Aggregate all data from other to self
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         (**self).aggregate(other)
+    }
+
+    fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
+        (**self).aggregate_without_inputs(other)
     }
 
     fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize) {

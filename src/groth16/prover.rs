@@ -255,6 +255,17 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.aux_assignment.extend(other.aux_assignment);
     }
 
+    fn extend_without_inputs(&mut self, other: Self) {
+        self.a_aux_density.extend(other.a_aux_density, false);
+        self.b_aux_density.extend(other.b_aux_density, false);
+
+        self.a.extend(other.a);
+        self.b.extend(other.b);
+        self.c.extend(other.c);
+
+        self.aux_assignment.extend(other.aux_assignment);
+    }
+
     fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
         let mut res = Vec::new();
         for _ in 0..size {
@@ -268,6 +279,12 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         for cs in other {
             self.extend(cs);
+        }
+    }
+
+    fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
+        for cs in other {
+            self.extend_without_inputs(cs);
         }
     }
 
