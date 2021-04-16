@@ -305,6 +305,10 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.aux_assignment.len()
     }
 
+    fn get_input_assigment_len(&mut self,) -> usize {
+        self.input_assignment.len()
+    }
+
     fn get_index(&mut self, v: &mut Variable,) -> usize {
         match v {
             Variable(Index::Input(i)) => {

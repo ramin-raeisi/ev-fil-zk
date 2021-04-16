@@ -36,6 +36,36 @@ where
     Ok(())
 }
 
+pub fn pack_into_inputs_with_align<E, CS>(mut cs: CS, bits: &[Boolean], shift: usize) -> Result<(), SynthesisError>
+where
+    E: ScalarEngine,
+    CS: ConstraintSystem<E>,
+{
+    for (i, bits) in bits.chunks(E::Fr::CAPACITY as usize).enumerate() {
+        let mut num = Num::<E>::zero();
+        let mut coeff = E::Fr::one();
+        for bit in bits {
+            num = num.add_bool_with_coeff(CS::one(), bit, coeff);
+
+            coeff.double();
+        }
+
+        let mut input = cs.alloc_input(|| format!("input {}", i), || Ok(*num.get_value().get()?))?;
+
+        cs.align_variable(&mut input, 0, i + shift);
+
+        // num * 1 = input
+        cs.enforce(
+            || format!("packing constraint {}", i),
+            |_| num.lc(E::Fr::one()),
+            |lc| lc + CS::one(),
+            |lc| lc + input,
+        );
+    }
+
+    Ok(())
+}
+
 pub fn bytes_to_bits(bytes: &[u8]) -> Vec<bool> {
     bytes
         .iter()
