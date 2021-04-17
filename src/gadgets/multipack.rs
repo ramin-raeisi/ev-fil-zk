@@ -52,7 +52,7 @@ where
 
         let mut input = cs.alloc_input(|| format!("input {}", i), || Ok(*num.get_value().get()?))?;
 
-        cs.align_variable(&mut input, 0, i + shift);
+        cs.align_variable(&mut input, i + shift, 0);
 
         // num * 1 = input
         cs.enforce(
