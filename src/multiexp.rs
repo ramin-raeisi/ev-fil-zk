@@ -1,7 +1,7 @@
 use bitvec::prelude::*;
 use ff::{Field, PrimeField, PrimeFieldRepr, ScalarEngine};
 use groupy::{CurveAffine, CurveProjective};
-use log::{error};
+use log::{info, error};
 use rayon::prelude::*;
 use std::io;
 use std::iter;
@@ -378,6 +378,7 @@ pub fn multiexp<G>(
         let mut exps = vec![exponents[0]; exponents.len()];
         let mut n = 0;
         let bv = Arc::new(&density_map.bv);
+        info!{"e = {}, d = {}", exponents.len(), bv.len()};
         for (&e, d) in exponents.iter().zip(bv.iter()) {
             if *d {
                 exps[n] = e;

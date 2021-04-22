@@ -559,6 +559,8 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
             let a_input_skip = 0;
             let a_aux_skip = input_assignment.len();
 
+
+            info!{"first multiexp_skipdensity"};
             let a_inputs = multiexp_skipdensity(
                 a_base.clone(),
                 a_input_skip,
@@ -566,13 +568,13 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
                 input_assignment.len(),
                 Some(&DEVICE_POOL),
             );
-
+            info!{"density_filter"};
             let (a_aux_exps, a_aux_n) = density_filter(
                 a_base.clone(),
                 Arc::new(prover.a_aux_density.clone()),
                 aux_assignment.clone(),
             );
-
+            info!{"second multiexp_skipdensity"};
             let a_aux = multiexp_skipdensity(
                 a_base.clone(),
                 a_aux_skip,
@@ -588,7 +590,7 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
 
             let b_input_skip = 0;
             let b_aux_skip = b_input_density_total;
-
+            info!{"first multiexp"};
             let b_g2_inputs = multiexp(
                 b_g2_base.clone(),
                 b_input_skip,
@@ -596,7 +598,7 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
-
+            info!{"density_filter"};
             let (b_g2_aux_exps, b_g2_aux_n) = density_filter(
                 b_g2_base.clone(),
                 b_aux_density.clone(),
