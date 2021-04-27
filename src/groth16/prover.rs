@@ -282,6 +282,18 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         }
     }
 
+    fn aggregate_index(&mut self, other: Vec<Self::Root>, i: usize) {
+        let mut j = 0;
+        for cs in other {
+            if j == i {
+                self.extend(cs);
+            }
+            else {
+                j = j + 1;
+            }
+        }
+    }
+
     fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
         for cs in other {
             self.extend_without_inputs(cs);
