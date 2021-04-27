@@ -458,8 +458,8 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn aggregate) in not implemented for {}", std::any::type_name::<Self>())
     }
 
-    fn aggregate_index(&mut self, _other: Vec<Self::Root>, i:usize) {
-        panic!("parallel functional (fn aggregate_index) in not implemented for {}", std::any::type_name::<Self>())
+    fn aggregate_element(&mut self, _other: Self::Root) {
+        panic!("parallel functional (fn aggregate_element) in not implemented for {}", std::any::type_name::<Self>())
     }
 
     fn aggregate_without_inputs(&mut self, _other: Vec<Self::Root>) {
@@ -579,8 +579,8 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
         self.0.aggregate(other)
     }
 
-    fn aggregate_index(&mut self, other: Vec<Self::Root>, i: usize) {
-        self.0.aggregate_index(other, i)
+    fn aggregate_element(&mut self, other: Self::Root) {
+        self.0.aggregate_element(other)
     }
 
     fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
@@ -695,8 +695,8 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
         (**self).aggregate(other)
     }
 
-    fn aggregate_index(&mut self, other: Vec<Self::Root>, i: usize) {
-        (**self).aggregate_index(other, i)
+    fn aggregate_element(&mut self, other: Self::Root) {
+        (**self).aggregate_element(other)
     }
 
     fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
