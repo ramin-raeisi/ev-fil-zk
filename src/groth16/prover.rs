@@ -317,6 +317,20 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         }
         Ok(res)
     }
+    fn make_copy(&self) -> Result<Self::Root, SynthesisError> {
+            let mut new_cs = Self::new();
+            //new_cs.alloc_input(|| "", || Ok(E::Fr::one()))?; // each CS has one
+            new_cs.a_aux_density = self.a_aux_density.clone();
+            new_cs.b_input_density = self.b_input_density.clone();
+            new_cs.b_aux_density = self.b_aux_density.clone();
+            new_cs.a = self.a.clone();
+            new_cs.b = self.b.clone();
+            new_cs.c = self.c.clone();
+            new_cs.input_assignment = self.input_assignment.clone();
+            new_cs.aux_assignment = self.aux_assignment.clone();
+        Ok(new_cs)
+    }
+
 
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         for cs in other {
