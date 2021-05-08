@@ -310,6 +310,10 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.extend(other);
     }
 
+    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: Self::Root) {
+        self.extend_from_element(other, unit);
+    }
+
     fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>){
         for (cs, un_cs) in other.into_iter()
         .zip(unit.into_iter()) {
