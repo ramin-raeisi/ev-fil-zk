@@ -57,7 +57,7 @@ fn eval<E: Engine>(
 }
 
 #[derive(Clone)]
-struct ProvingAssignment<E: Engine> {
+pub struct ProvingAssignment<E: Engine> {
     // Density of queries
     a_aux_density: DensityTracker,
     b_input_density: DensityTracker,
