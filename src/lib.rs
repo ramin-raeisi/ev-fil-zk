@@ -446,7 +446,7 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         );
     }
 
-    fn extend_from_element(&mut self, mut _other: Self, _unit: Self) {
+    fn extend_from_element(&mut self, mut _other: Self, _unit: &Self) {
         unimplemented!(
             "ConstraintSystem::extend_from_element must be implemented for types implementing ConstraintSystem"
         );
@@ -468,7 +468,7 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn aggregate_element) in not implemented for {}", std::any::type_name::<Self>())
     }
 
-    fn part_aggregate_element(&mut self, mut _other: Self::Root, unit: Self::Root) {
+    fn part_aggregate_element(&mut self, mut _other: Self::Root, unit: &Self::Root) {
         panic!("parallel functional (fn part_aggregate_element) in not implemented for {}", std::any::type_name::<Self>())
     }
 
@@ -476,9 +476,9 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn aggregate_without_inputs) in not implemented for {}", std::any::type_name::<Self>())
     }
 
-    fn part_aggregate(&mut self, mut _other: Vec<Self::Root>, _unit:Vec<Self::Root>) {
+    /*fn part_aggregate(&mut self, mut _other: Vec<Self::Root>, _unit:Vec<Self::Root>) {
         panic!("parallel functional (fn part_aggregate) in not implemented for {}", std::any::type_name::<Self>())
-    }
+    }*/
 
     fn align_variable(&mut self, _v: &mut Variable, _input_shift: usize, _aux_shift: usize) {
         panic!("parallel functional (fn align_variable) in not implemented for {}", std::any::type_name::<Self>())
@@ -593,15 +593,15 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
         self.0.aggregate(other)
     }
 
-    fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>) {
+    /*fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>) {
         self.0.part_aggregate(other, unit)
-    }
+    }*/
 
     fn aggregate_element(&mut self, other: Self::Root) {
         self.0.aggregate_element(other)
     }
 
-    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: Self::Root) {
+    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: &Self::Root) {
         self.0.part_aggregate_element(other, unit)
     }
 
@@ -717,15 +717,15 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
         (**self).aggregate(other)
     }
 
-    fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>) {
+    /*fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>) {
         (**self).part_aggregate(other, unit)
-    }
+    }*/
 
     fn aggregate_element(&mut self, other: Self::Root) {
         (**self).aggregate_element(other)
     }
 
-    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: Self::Root) {
+    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: &Self::Root) {
         (**self).part_aggregate_element(other, unit)
     }
 

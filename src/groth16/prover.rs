@@ -266,7 +266,7 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.aux_assignment.extend(other.aux_assignment);
     }
 
-    fn extend_from_element(&mut self, mut other: Self, unit: Self){
+    fn extend_from_element(&mut self, mut other: Self, unit: &Self){
         for i in 0..unit.input_assignment.len(){
             other.b_input_density.deallocate(i);
         }
@@ -310,16 +310,16 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.extend(other);
     }
 
-    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: Self::Root) {
+    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: &Self::Root) {
         self.extend_from_element(other, unit);
     }
 
-    fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>){
+    /*fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>){
         for (cs, un_cs) in other.into_iter()
         .zip(unit.into_iter()) {
             self.extend_from_element(cs, un_cs)
         }
-    }
+    }*/
 
     fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
         for cs in other {
