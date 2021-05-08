@@ -446,6 +446,12 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         );
     }
 
+    fn extend_from_element(&mut self, mut _other: Self, _unit: Self) {
+        unimplemented!(
+            "ConstraintSystem::extend_from_element must be implemented for types implementing ConstraintSystem"
+        );
+    }
+
     // Create a vector of CSs with the same porperties
     // Later these CSs can be aggregated to the one
     // It allows to calculate synthesize-functions in parallel for several copies of the CS and later aggregate them
@@ -464,6 +470,10 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
 
     fn aggregate_without_inputs(&mut self, _other: Vec<Self::Root>) {
         panic!("parallel functional (fn aggregate_without_inputs) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn part_aggregate(&mut self, mut _other: Vec<Self::Root>, _unit:Vec<Self::Root>) {
+        panic!("parallel functional (fn part_aggregate) in not implemented for {}", std::any::type_name::<Self>())
     }
 
     fn align_variable(&mut self, _v: &mut Variable, _input_shift: usize, _aux_shift: usize) {
@@ -577,6 +587,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
     // Aggregate all data from other to self
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         self.0.aggregate(other)
+    }
+
+    fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>) {
+        self.0.part_aggregate(other, unit)
     }
 
     fn aggregate_element(&mut self, other: Self::Root) {
@@ -693,6 +707,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
     // Aggregate all data from other to self
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         (**self).aggregate(other)
+    }
+
+    fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>) {
+        (**self).part_aggregate(other, unit)
     }
 
     fn aggregate_element(&mut self, other: Self::Root) {

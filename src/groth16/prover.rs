@@ -266,6 +266,30 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.aux_assignment.extend(other.aux_assignment);
     }
 
+    fn extend_from_element(&mut self, mut other: Self, unit: Self){
+        for i in 0..unit.input_assignment.len(){
+            other.b_input_density.deallocate(i);
+        }
+        for i in 0..unit.aux_assignment.len(){
+            other.a_aux_density.deallocate(i);
+            other.b_aux_density.deallocate(i);
+        }
+
+        self.a_aux_density.extend(other.a_aux_density, false);
+        self.b_input_density.extend(other.b_input_density, true);
+        self.b_aux_density.extend(other.b_aux_density, false);
+
+        self.a.extend(&other.a[unit.a.len()..]);
+        self.b.extend(&other.b[unit.b.len()..]);
+        self.c.extend(&other.c[unit.c.len()..]);
+
+        self.input_assignment
+            // Skip first input, which must have been a temporarily allocated one variable.
+            .extend(&other.input_assignment[unit.input_assignment.len()..]);
+        self.aux_assignment.extend(&other.aux_assignment[unit.aux_assignment.len()..]);
+
+    }
+
     fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
         let mut res = Vec::new();
         for _ in 0..size {
@@ -284,6 +308,13 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
 
     fn aggregate_element(&mut self, other: Self::Root) {
         self.extend(other);
+    }
+
+    fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>){
+        for (cs, un_cs) in other.into_iter()
+        .zip(unit.into_iter()) {
+            self.extend_from_element(cs, un_cs)
+        }
     }
 
     fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
