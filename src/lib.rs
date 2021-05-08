@@ -459,6 +459,10 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn make_vector) in not implemented for {}", std::any::type_name::<Self>())
     }
 
+    fn make_vector_copy(&self, _size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        panic!("parallel functional (fn make_vector) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
     // Aggregate all data from other to self
     fn aggregate(&mut self, _other: Vec<Self::Root>) {
         panic!("parallel functional (fn aggregate) in not implemented for {}", std::any::type_name::<Self>())
@@ -588,6 +592,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
         self.0.make_vector(size)
     }
 
+    fn make_vector_copy(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        self.0.make_vector_copy(size)
+    }
+
     // Aggregate all data from other to self
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         self.0.aggregate(other)
@@ -710,6 +718,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
         (**self).make_vector(size)
+    }
+
+    fn make_vector_copy(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        (**self).make_vector_copy(size)
     }
 
     // Aggregate all data from other to self
