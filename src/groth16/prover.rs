@@ -268,11 +268,11 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
 
     fn extend_from_element(&mut self, mut other: Self, unit: &Self){
         info!{"b input density extend from element"};
-        self.b_input_density.extend_from_element(other.b_input_density, unit.b_input_density);
+        self.b_input_density.extend_from_element(other.b_input_density, &unit.b_input_density);
 
         info!{"aux density extend from element"};
-        self.a_aux_density.extend_from_element(other.a_aux_density, unit.a_aux_density);
-        other.b_aux_density.extend_from_element(other.b_aux_density, unit.b_aux_density);
+        self.a_aux_density.extend_from_element(other.a_aux_density, &unit.a_aux_density);
+        self.b_aux_density.extend_from_element(other.b_aux_density, &unit.b_aux_density);
 
         if other.a.len() > unit.a.len() {
             self.a.extend(&other.a[unit.a.len()..]);
