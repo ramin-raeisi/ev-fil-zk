@@ -267,26 +267,37 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     }
 
     fn extend_from_element(&mut self, mut other: Self, unit: &Self){
+        info!{"input density deallocate"};
         for i in 0..unit.input_assignment.len(){
             other.b_input_density.deallocate(i);
         }
+        info!{"aux density deallocate"};
         for i in 0..unit.aux_assignment.len(){
             other.a_aux_density.deallocate(i);
             other.b_aux_density.deallocate(i);
         }
-
+        info!{"extend density"};
         self.a_aux_density.extend(other.a_aux_density, false);
         self.b_input_density.extend(other.b_input_density, true);
         self.b_aux_density.extend(other.b_aux_density, false);
 
-        self.a.extend(&other.a[unit.a.len()..]);
-        self.b.extend(&other.b[unit.b.len()..]);
-        self.c.extend(&other.c[unit.c.len()..]);
-
-        self.input_assignment
+        if other.a.len() > unit.a.len() {
+            self.a.extend(&other.a[unit.a.len()..]);
+        }
+        if other.b.len() > unit.b.len() {
+            self.b.extend(&other.b[unit.b.len()..]);
+        }
+        if other.c.len() > unit.c.len() {
+            self.c.extend(&other.c[unit.c.len()..]);
+        }
+        if other.input_assignment.len() > unit.input_assignment.len() {
+            self.input_assignment
             // Skip first input, which must have been a temporarily allocated one variable.
             .extend(&other.input_assignment[unit.input_assignment.len()..]);
-        self.aux_assignment.extend(&other.aux_assignment[unit.aux_assignment.len()..]);
+        }
+        if other.aux_assignment.len() > unit.aux_assignment.len() {
+            self.aux_assignment.extend(&other.aux_assignment[unit.aux_assignment.len()..]);
+        }
 
     }
 
