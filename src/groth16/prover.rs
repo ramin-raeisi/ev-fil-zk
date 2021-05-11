@@ -255,17 +255,6 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.aux_assignment.extend(other.aux_assignment);
     }
 
-    fn extend_without_inputs(&mut self, other: Self) {
-        self.a_aux_density.extend(other.a_aux_density, false);
-        self.b_aux_density.extend(other.b_aux_density, false);
-
-        self.a.extend(other.a);
-        self.b.extend(other.b);
-        self.c.extend(other.c);
-
-        self.aux_assignment.extend(other.aux_assignment);
-    }
-
     fn extend_from_element(&mut self, mut other: Self, unit: &Self){
         info!{"b input density extend from element"};
         self.b_input_density.extend_from_element(other.b_input_density, &unit.b_input_density);
@@ -357,12 +346,6 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         }
     }*/
 
-    fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
-        for cs in other {
-            self.extend_without_inputs(cs);
-        }
-    }
-
     fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize,) {
         match v {
             Variable(Index::Input(i)) => {
@@ -392,19 +375,6 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             }
             Variable(Index::Aux(i)) => {
                 *i
-
-            }
-        }
-    }
-
-    fn print_index(&mut self, v: &mut Variable,) {
-        match v {
-            Variable(Index::Input(i)) => {
-                info!("index = {}, input = {}", i, self.input_assignment.len());
-
-            }
-            Variable(Index::Aux(i)) => {
-                info!("index = {}, aux = {}", i , self.aux_assignment.len());
 
             }
         }
