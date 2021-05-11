@@ -478,7 +478,7 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
     let prover_start = Instant::now();
 
     let mut provers = circuits
-        .into_iter()
+        .into_par_iter()
         .map(|circuit| -> Result<_, SynthesisError> {
             let mut prover = ProvingAssignment::new();
 
