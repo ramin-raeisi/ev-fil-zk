@@ -256,10 +256,7 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     }
 
     fn extend_from_element(&mut self, mut other: Self, unit: &Self){
-        info!{"b input density extend from element"};
         self.b_input_density.extend_from_element(other.b_input_density, &unit.b_input_density);
-
-        info!{"aux density extend from element"};
         self.a_aux_density.extend_from_element(other.a_aux_density, &unit.a_aux_density);
         self.b_aux_density.extend_from_element(other.b_aux_density, &unit.b_aux_density);
 
@@ -297,7 +294,6 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         let mut res = Vec::new();
         for _ in 0..size {
             let mut new_cs = Self::new();
-            //new_cs.alloc_input(|| "", || Ok(E::Fr::one()))?; // each CS has one
             new_cs.a_aux_density = self.a_aux_density.clone();
             new_cs.b_input_density = self.b_input_density.clone();
             new_cs.b_aux_density = self.b_aux_density.clone();
@@ -312,7 +308,6 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
     }
     fn make_copy(&self) -> Result<Self::Root, SynthesisError> {
             let mut new_cs = Self::new();
-            //new_cs.alloc_input(|| "", || Ok(E::Fr::one()))?; // each CS has one
             new_cs.a_aux_density = self.a_aux_density.clone();
             new_cs.b_input_density = self.b_input_density.clone();
             new_cs.b_aux_density = self.b_aux_density.clone();
@@ -605,7 +600,6 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
             let a_aux_skip = input_assignment.len();
 
 
-            info!{"first multiexp_skipdensity"};
             let a_inputs = multiexp_skipdensity(
                 a_base.clone(),
                 a_input_skip,
@@ -613,13 +607,11 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
                 input_assignment.len(),
                 Some(&DEVICE_POOL),
             );
-            info!{"density_filter"};
             let (a_aux_exps, a_aux_n) = density_filter(
                 a_base.clone(),
                 Arc::new(prover.a_aux_density.clone()),
                 aux_assignment.clone(),
             );
-            info!{"second multiexp_skipdensity"};
             let a_aux = multiexp_skipdensity(
                 a_base.clone(),
                 a_aux_skip,
@@ -635,7 +627,6 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
 
             let b_input_skip = 0;
             let b_aux_skip = b_input_density_total;
-            info!{"first multiexp"};
             let b_g2_inputs = multiexp(
                 b_g2_base.clone(),
                 b_input_skip,
@@ -643,7 +634,6 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
-            info!{"density_filter"};
             let (b_g2_aux_exps, b_g2_aux_n) = density_filter(
                 b_g2_base.clone(),
                 b_aux_density.clone(),
