@@ -358,6 +358,10 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         );
     }
 
+    fn clone(&self) -> Self{
+        panic!("parallel functional (fn clone) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
     /// Return the "one" input variable
     fn one() -> Variable {
         Variable::new_unchecked(Index::Input(0))
@@ -435,6 +439,60 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
             "ConstraintSystem::extend must be implemented for types implementing ConstraintSystem"
         );
     }
+
+    fn extend_without_inputs(&mut self, _other: Self) {
+        unimplemented!(
+            "ConstraintSystem::extend_without_inputs must be implemented for types implementing ConstraintSystem"
+        );
+    }
+
+    // Create a vector of CSs with the same porperties
+    // Later these CSs can be aggregated to the one
+    // It allows to calculate synthesize-functions in parallel for several copies of the CS and later aggregate them
+    fn make_vector(&self, _size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        panic!("parallel functional (fn make_vector) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    // Aggregate all data from other to self
+    fn aggregate(&mut self, _other: Vec<Self::Root>) {
+        panic!("parallel functional (fn aggregate) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn aggregate_element(&mut self, _other: Self::Root) {
+        panic!("parallel functional (fn aggregate_element) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn aggregate_without_inputs(&mut self, _other: Vec<Self::Root>) {
+        panic!("parallel functional (fn aggregate_without_inputs) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn align_variable(&mut self, _v: &mut Variable, _input_shift: usize, _aux_shift: usize) {
+        panic!("parallel functional (fn align_variable) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn get_aux_assigment_len(&mut self,) -> usize{
+        panic!("parallel functional (fn get_aux_assigment_len) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn get_input_assigment_len(&mut self,) -> usize{
+        panic!("parallel functional (fn get_input_assigment_len) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn get_index(&mut self, v: &mut Variable,) -> usize{
+        panic!("parallel functional (fn get_index) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn print_index(&mut self, _v: &mut Variable) {
+        panic!("parallel functional (fn print_index) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn deallocate(&mut self, _v: Variable) -> Result<(), SynthesisError> {
+        panic!("parallel functional (fn deallocate) in not implemented for {}", std::any::type_name::<Self>())
+    }
+
+    fn set_var_density(&mut self, _v: Variable, _density_value: bool) -> Result<(), SynthesisError> {
+        panic!("parallel functional (fn set_var_density) in not implemented for {}", std::any::type_name::<Self>())
+    }
 }
 
 /// This is a "namespaced" constraint system which borrows a constraint system (pushing
@@ -457,6 +515,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
 
     fn one() -> Variable {
         CS::one()
+    }
+
+    fn clone(&self) -> Self {
+        self.clone()
     }
 
     fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>
@@ -507,11 +569,62 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
     fn get_root(&mut self) -> &mut Self::Root {
         self.0.get_root()
     }
+
+    fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        self.0.make_vector(size)
+    }
+
+    // Aggregate all data from other to self
+    fn aggregate(&mut self, other: Vec<Self::Root>) {
+        self.0.aggregate(other)
+    }
+
+    fn aggregate_element(&mut self, other: Self::Root) {
+        self.0.aggregate_element(other)
+    }
+
+    fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
+        self.0.aggregate_without_inputs(other)
+    }
+
+    fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize) {
+        self.0.align_variable(v, input_shift, aux_shift);
+    }
+
+    fn get_aux_assigment_len(&mut self) -> usize {
+        self.0.get_aux_assigment_len()
+    }
+
+    fn get_input_assigment_len(&mut self) -> usize {
+        self.0.get_input_assigment_len()
+    }
+
+    fn get_index(&mut self, v: &mut Variable,) -> usize {
+        self.0.get_index(v)
+    }
+
+    fn print_index(&mut self, v: &mut Variable) {
+        self.0.print_index(v);
+    }
+
+    fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
+        self.0.deallocate(v)
+    }
+
+    fn set_var_density(&mut self, v: Variable, density_value: bool) -> Result<(), SynthesisError> {
+        self.0.set_var_density(v, density_value)
+    }
 }
 
 impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> Drop for Namespace<'a, E, CS> {
     fn drop(&mut self) {
         self.get_root().pop_namespace()
+    }
+}
+
+impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> PartialEq for Namespace<'a, E, CS> {
+    fn eq(&self, other: &Namespace<'a, E, CS>) -> bool {
+        self.eq(other)
     }
 }
 
@@ -522,6 +635,10 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn one() -> Variable {
         CS::one()
+    }
+
+    fn clone(&self) -> Self{
+        (**&self).clone()
     }
 
     fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>
@@ -567,6 +684,51 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn get_root(&mut self) -> &mut Self::Root {
         (**self).get_root()
+    }
+
+    fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        (**self).make_vector(size)
+    }
+
+    // Aggregate all data from other to self
+    fn aggregate(&mut self, other: Vec<Self::Root>) {
+        (**self).aggregate(other)
+    }
+
+    fn aggregate_element(&mut self, other: Self::Root) {
+        (**self).aggregate_element(other)
+    }
+
+    fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
+        (**self).aggregate_without_inputs(other)
+    }
+
+    fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize) {
+        (**self).align_variable(v, input_shift, aux_shift);
+    }
+
+    fn get_aux_assigment_len(&mut self) -> usize {
+        (**self).get_aux_assigment_len()
+    }
+
+    fn get_input_assigment_len(&mut self) -> usize {
+        (**self).get_input_assigment_len()
+    }
+
+    fn get_index(&mut self,  v: &mut Variable) -> usize {
+        (**self).get_index(v)
+    }
+
+    fn print_index(&mut self, v: &mut Variable) {
+        (**self).print_index(v);
+    }
+
+    fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
+        (**self).deallocate(v)
+    }
+
+    fn set_var_density(&mut self, v: Variable, density_value: bool) -> Result<(), SynthesisError> {
+        (**self).set_var_density(v, density_value)
     }
 }
 
