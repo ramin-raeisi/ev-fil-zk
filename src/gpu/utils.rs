@@ -17,6 +17,7 @@ lazy_static::lazy_static! {
 
             ("TITAN RTX".to_string(), (4608, 0)),
 
+            ("RTX A6000".to_string(), (10752, 134217728)),
             ("Tesla V100".to_string(), (5120, 67108864)),
             ("Tesla V100S".to_string(), (5120, 67108864)),
             ("Tesla P100".to_string(), (3584, 0)),

@@ -4,14 +4,12 @@ use groupy::{CurveAffine, CurveProjective};
 use log::{info, error};
 use rayon::prelude::*;
 use std::io;
-use std::iter;
 use std::sync::Arc;
 
 use super::SynthesisError;
 use crate::gpu;
 use futures::future::{Future, lazy};
 use rayon_futures::ScopeFutureExt;
-use std::iter::FusedIterator;
 
 /// An object that builds a source of bases.
 pub trait SourceBuilder<G: CurveAffine>: Send + Sync + 'static + Clone {
@@ -161,6 +159,25 @@ impl<'a> DensityTracker {
 
         // Since any needed adjustments to total densities have been made, just sum the totals and keep the sum.
         self.total_density += other.total_density;
+    }
+
+    pub fn extend_from_element(&mut self, other: Self, unit: &Self) {
+        if other.bv.is_empty() {
+            // Nothing to do if other is empty.
+            return;
+        }
+
+        if self.bv.is_empty() {
+            // If self is empty, assume other's density.
+            self.total_density = other.total_density;
+            self.bv = other.bv;
+            return;
+        }
+
+        self.bv.extend(other.bv.iter().skip(unit.bv.len()));
+
+        // Since any needed adjustments to total densities have been made, just sum the totals and keep the sum.
+        self.total_density += other.total_density - unit.total_density;
     }
 
     pub fn deallocate(&mut self, idx: usize) {

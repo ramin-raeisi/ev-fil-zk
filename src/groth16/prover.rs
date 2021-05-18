@@ -57,7 +57,7 @@ fn eval<E: Engine>(
 }
 
 #[derive(Clone)]
-struct ProvingAssignment<E: Engine> {
+pub struct ProvingAssignment<E: Engine> {
     // Density of queries
     a_aux_density: DensityTracker,
     b_input_density: DensityTracker,
@@ -255,15 +255,29 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.aux_assignment.extend(other.aux_assignment);
     }
 
-    fn extend_without_inputs(&mut self, other: Self) {
-        self.a_aux_density.extend(other.a_aux_density, false);
-        self.b_aux_density.extend(other.b_aux_density, false);
+    fn extend_from_element(&mut self, mut other: Self, unit: &Self){
+        self.b_input_density.extend_from_element(other.b_input_density, &unit.b_input_density);
+        self.a_aux_density.extend_from_element(other.a_aux_density, &unit.a_aux_density);
+        self.b_aux_density.extend_from_element(other.b_aux_density, &unit.b_aux_density);
 
-        self.a.extend(other.a);
-        self.b.extend(other.b);
-        self.c.extend(other.c);
+        if other.a.len() > unit.a.len() {
+            self.a.extend(&other.a[unit.a.len()..]);
+        }
+        if other.b.len() > unit.b.len() {
+            self.b.extend(&other.b[unit.b.len()..]);
+        }
+        if other.c.len() > unit.c.len() {
+            self.c.extend(&other.c[unit.c.len()..]);
+        }
+        if other.input_assignment.len() > unit.input_assignment.len() {
+            self.input_assignment
+            // Skip first input, which must have been a temporarily allocated one variable.
+            .extend(&other.input_assignment[unit.input_assignment.len()..]);
+        }
+        if other.aux_assignment.len() > unit.aux_assignment.len() {
+            self.aux_assignment.extend(&other.aux_assignment[unit.aux_assignment.len()..]);
+        }
 
-        self.aux_assignment.extend(other.aux_assignment);
     }
 
     fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
@@ -276,6 +290,36 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         Ok(res)
     }
 
+    fn make_vector_copy(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        let mut res = Vec::new();
+        for _ in 0..size {
+            let mut new_cs = Self::new();
+            new_cs.a_aux_density = self.a_aux_density.clone();
+            new_cs.b_input_density = self.b_input_density.clone();
+            new_cs.b_aux_density = self.b_aux_density.clone();
+            new_cs.a = self.a.clone();
+            new_cs.b = self.b.clone();
+            new_cs.c = self.c.clone();
+            new_cs.input_assignment = self.input_assignment.clone();
+            new_cs.aux_assignment = self.aux_assignment.clone();
+            res.push(new_cs);
+        }
+        Ok(res)
+    }
+    fn make_copy(&self) -> Result<Self::Root, SynthesisError> {
+            let mut new_cs = Self::new();
+            new_cs.a_aux_density = self.a_aux_density.clone();
+            new_cs.b_input_density = self.b_input_density.clone();
+            new_cs.b_aux_density = self.b_aux_density.clone();
+            new_cs.a = self.a.clone();
+            new_cs.b = self.b.clone();
+            new_cs.c = self.c.clone();
+            new_cs.input_assignment = self.input_assignment.clone();
+            new_cs.aux_assignment = self.aux_assignment.clone();
+        Ok(new_cs)
+    }
+
+
     fn aggregate(&mut self, other: Vec<Self::Root>) {
         for cs in other {
             self.extend(cs);
@@ -286,11 +330,16 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.extend(other);
     }
 
-    fn aggregate_without_inputs(&mut self, other: Vec<Self::Root>) {
-        for cs in other {
-            self.extend_without_inputs(cs);
-        }
+    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: &Self::Root) {
+        self.extend_from_element(other, unit);
     }
+
+    /*fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>){
+        for (cs, un_cs) in other.into_iter()
+        .zip(unit.into_iter()) {
+            self.extend_from_element(cs, un_cs)
+        }
+    }*/
 
     fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize,) {
         match v {
@@ -321,19 +370,6 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             }
             Variable(Index::Aux(i)) => {
                 *i
-
-            }
-        }
-    }
-
-    fn print_index(&mut self, v: &mut Variable,) {
-        match v {
-            Variable(Index::Input(i)) => {
-                info!("index = {}, input = {}", i, self.input_assignment.len());
-
-            }
-            Variable(Index::Aux(i)) => {
-                info!("index = {}, aux = {}", i , self.aux_assignment.len());
 
             }
         }
@@ -564,7 +600,6 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
             let a_aux_skip = input_assignment.len();
 
 
-            info!{"first multiexp_skipdensity"};
             let a_inputs = multiexp_skipdensity(
                 a_base.clone(),
                 a_input_skip,
@@ -572,13 +607,11 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
                 input_assignment.len(),
                 Some(&DEVICE_POOL),
             );
-            info!{"density_filter"};
             let (a_aux_exps, a_aux_n) = density_filter(
                 a_base.clone(),
                 Arc::new(prover.a_aux_density.clone()),
                 aux_assignment.clone(),
             );
-            info!{"second multiexp_skipdensity"};
             let a_aux = multiexp_skipdensity(
                 a_base.clone(),
                 a_aux_skip,
@@ -594,7 +627,6 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
 
             let b_input_skip = 0;
             let b_aux_skip = b_input_density_total;
-            info!{"first multiexp"};
             let b_g2_inputs = multiexp(
                 b_g2_base.clone(),
                 b_input_skip,
@@ -602,7 +634,6 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
-            info!{"density_filter"};
             let (b_g2_aux_exps, b_g2_aux_n) = density_filter(
                 b_g2_base.clone(),
                 b_aux_density.clone(),
