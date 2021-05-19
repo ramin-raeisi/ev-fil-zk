@@ -10,7 +10,6 @@ use std::sync::{mpsc, Arc};
 use futures::future::Future;
 use rayon::iter::{ParallelIterator, IntoParallelRefIterator};
 use crate::gpu::scheduler;
-use std::time::{Instant};
 use super::super::settings;
 
 use crate::multiexp::{multiexp_cpu}; // for cpu-based parallel computations

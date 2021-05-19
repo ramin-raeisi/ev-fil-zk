@@ -16,7 +16,7 @@ edition = "2018"
 
 [dependencies]
 crossbeam = "0.8"
-bit-vec = "0.6"
+bitvec = "0.21.0"
 blake2s_simd = "0.5"
 ff = { version = "0.2.0", package = "fff" }
 futures = "0.1.29"

@@ -56,8 +56,8 @@ fn eval<E: Engine>(
     acc
 }
 
-
-struct ProvingAssignment<E: Engine> {
+#[derive(Clone)]
+pub struct ProvingAssignment<E: Engine> {
     // Density of queries
     a_aux_density: DensityTracker,
     b_input_density: DensityTracker,
@@ -137,6 +137,19 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             c: vec![],
             input_assignment: vec![],
             aux_assignment: vec![],
+        }
+    }
+
+    fn clone(&self) -> Self {
+        ProvingAssignment {
+            a_aux_density: self.a_aux_density.clone(),
+            b_input_density: self.b_input_density.clone(),
+            b_aux_density: self.b_aux_density.clone(),
+            a: self.a.clone(),
+            b: self.b.clone(),
+            c: self.c.clone(),
+            input_assignment: self.input_assignment.clone(),
+            aux_assignment: self.aux_assignment.clone(),
         }
     }
 
@@ -240,6 +253,155 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
             // Skip first input, which must have been a temporarily allocated one variable.
             .extend(&other.input_assignment[1..]);
         self.aux_assignment.extend(other.aux_assignment);
+    }
+
+    fn extend_from_element(&mut self, mut other: Self, unit: &Self){
+        self.b_input_density.extend_from_element(other.b_input_density, &unit.b_input_density);
+        self.a_aux_density.extend_from_element(other.a_aux_density, &unit.a_aux_density);
+        self.b_aux_density.extend_from_element(other.b_aux_density, &unit.b_aux_density);
+
+        if other.a.len() > unit.a.len() {
+            self.a.extend(&other.a[unit.a.len()..]);
+        }
+        if other.b.len() > unit.b.len() {
+            self.b.extend(&other.b[unit.b.len()..]);
+        }
+        if other.c.len() > unit.c.len() {
+            self.c.extend(&other.c[unit.c.len()..]);
+        }
+        if other.input_assignment.len() > unit.input_assignment.len() {
+            self.input_assignment
+            // Skip first input, which must have been a temporarily allocated one variable.
+            .extend(&other.input_assignment[unit.input_assignment.len()..]);
+        }
+        if other.aux_assignment.len() > unit.aux_assignment.len() {
+            self.aux_assignment.extend(&other.aux_assignment[unit.aux_assignment.len()..]);
+        }
+
+    }
+
+    fn make_vector(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        let mut res = Vec::new();
+        for _ in 0..size {
+            let mut new_cs = Self::new();
+            new_cs.alloc_input(|| "", || Ok(E::Fr::one()))?; // each CS has one
+            res.push(new_cs);
+        }
+        Ok(res)
+    }
+
+    fn make_vector_copy(&self, size: usize) -> Result<Vec<Self::Root>, SynthesisError> {
+        let mut res = Vec::new();
+        for _ in 0..size {
+            let mut new_cs = Self::new();
+            new_cs.a_aux_density = self.a_aux_density.clone();
+            new_cs.b_input_density = self.b_input_density.clone();
+            new_cs.b_aux_density = self.b_aux_density.clone();
+            new_cs.a = self.a.clone();
+            new_cs.b = self.b.clone();
+            new_cs.c = self.c.clone();
+            new_cs.input_assignment = self.input_assignment.clone();
+            new_cs.aux_assignment = self.aux_assignment.clone();
+            res.push(new_cs);
+        }
+        Ok(res)
+    }
+    fn make_copy(&self) -> Result<Self::Root, SynthesisError> {
+            let mut new_cs = Self::new();
+            new_cs.a_aux_density = self.a_aux_density.clone();
+            new_cs.b_input_density = self.b_input_density.clone();
+            new_cs.b_aux_density = self.b_aux_density.clone();
+            new_cs.a = self.a.clone();
+            new_cs.b = self.b.clone();
+            new_cs.c = self.c.clone();
+            new_cs.input_assignment = self.input_assignment.clone();
+            new_cs.aux_assignment = self.aux_assignment.clone();
+        Ok(new_cs)
+    }
+
+
+    fn aggregate(&mut self, other: Vec<Self::Root>) {
+        for cs in other {
+            self.extend(cs);
+        }
+    }
+
+    fn aggregate_element(&mut self, other: Self::Root) {
+        self.extend(other);
+    }
+
+    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: &Self::Root) {
+        self.extend_from_element(other, unit);
+    }
+
+    /*fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>){
+        for (cs, un_cs) in other.into_iter()
+        .zip(unit.into_iter()) {
+            self.extend_from_element(cs, un_cs)
+        }
+    }*/
+
+    fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize,) {
+        match v {
+            Variable(Index::Input(i)) => {
+                *v = Variable(Index::Input(input_shift));
+
+            }
+            Variable(Index::Aux(i)) => {
+                *v = Variable(Index::Aux(aux_shift));
+
+            }
+        }
+    }
+
+    fn get_aux_assigment_len(&mut self,) -> usize {
+        self.aux_assignment.len()
+    }
+
+    fn get_input_assigment_len(&mut self,) -> usize {
+        self.input_assignment.len()
+    }
+
+    fn get_index(&mut self, v: &mut Variable,) -> usize {
+        match v {
+            Variable(Index::Input(i)) => {
+                *i
+
+            }
+            Variable(Index::Aux(i)) => {
+                *i
+
+            }
+        }
+    }
+
+    fn deallocate(&mut self, v: Variable) -> Result<(), SynthesisError> {
+        match v {
+            Variable(Index::Input(i)) => {
+                self.input_assignment.remove(i);
+                self.b_input_density.deallocate(i);
+            }
+            Variable(Index::Aux(i)) => {
+                self.aux_assignment.remove(i);
+                self.a_aux_density.deallocate(i);
+                self.b_aux_density.deallocate(i);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn set_var_density(&mut self, v: Variable, density_value: bool) -> Result<(), SynthesisError> {
+        match v {
+            Variable(Index::Input(i)) => {
+                self.b_input_density.set_var_density(i, density_value);
+            }
+            Variable(Index::Aux(i)) => {
+                self.a_aux_density.set_var_density(i, density_value);
+                self.b_aux_density.set_var_density(i, density_value);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -437,6 +599,7 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
             let a_input_skip = 0;
             let a_aux_skip = input_assignment.len();
 
+
             let a_inputs = multiexp_skipdensity(
                 a_base.clone(),
                 a_input_skip,
@@ -444,13 +607,11 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
                 input_assignment.len(),
                 Some(&DEVICE_POOL),
             );
-
             let (a_aux_exps, a_aux_n) = density_filter(
                 a_base.clone(),
                 Arc::new(prover.a_aux_density.clone()),
                 aux_assignment.clone(),
             );
-
             let a_aux = multiexp_skipdensity(
                 a_base.clone(),
                 a_aux_skip,
@@ -466,7 +627,6 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
 
             let b_input_skip = 0;
             let b_aux_skip = b_input_density_total;
-
             let b_g2_inputs = multiexp(
                 b_g2_base.clone(),
                 b_input_skip,
@@ -474,7 +634,6 @@ fn create_proof_batch_inner<E, C, P: ParameterGetter<E>>(
                 input_assignment.clone(),
                 Some(&DEVICE_POOL),
             );
-
             let (b_g2_aux_exps, b_g2_aux_n) = density_filter(
                 b_g2_base.clone(),
                 b_aux_density.clone(),
@@ -561,51 +720,108 @@ mod tests {
                 let count: usize = k * j;
 
                 let mut full_assignment = ProvingAssignment::<Bls12>::new();
-                full_assignment
-                    .alloc_input(|| "one", || Ok(Fr::one()))
-                    .unwrap();
 
-                let mut partial_assignments = Vec::with_capacity(count / k);
+                let mut base_partial = ProvingAssignment::<Bls12>::new();
+
+                let mut base_partial2 = ProvingAssignment::<Bls12>::new();
+
+                let provers = vec![&mut full_assignment, &mut base_partial];
+                let x = Fr::from_str("5").unwrap();
+                let mut x_sqr = x.clone();
+                x_sqr.mul_assign(&x);
+                for p in provers {
+                    p.alloc_input(|| "one", || Ok(Fr::one()))
+                        .unwrap();
+                    let x_var = p.alloc_input(|| "x_val", || Ok(x.clone())).unwrap();
+                    let x_sqr_var = p.alloc(|| "x_sqr", || Ok(x_sqr.clone())).unwrap();
+                    p.enforce(|| "x_squaring", |lc| lc + x_var, |lc| lc + x_var, |lc| lc + x_sqr_var);
+                }
+                
+                let mut partial_assignments = base_partial.make_vector(count / k).unwrap();
+                let mut partial_assignments2 = base_partial.make_vector(count / k).unwrap();
+
+                let mut parents = Vec::with_capacity(count);
                 for i in 0..count {
-                    if i % k == 0 {
-                        let mut p = ProvingAssignment::new();
-                        p.alloc_input(|| "one", || Ok(Fr::one())).unwrap();
-                        partial_assignments.push(p)
-                    }
-
                     let index: usize = i / k;
                     let partial_assignment = &mut partial_assignments[index];
+                    let partial_assignment2 = &mut partial_assignments2[index];
+                    let c = Fr::from_str("7").unwrap();
+                    let com = partial_assignment
+                            .alloc_input(|| format!("alloc_input comm"), || Ok(c.clone()))
+                            .unwrap();
+                            let com = partial_assignment2
+                            .alloc_input(|| format!("alloc_input comm"), || Ok(c.clone()))
+                            .unwrap();
 
+                    // take a random element, dobule it and verify results
                     if rng.gen() {
                         let el = Fr::random(&mut rng);
-                        full_assignment
-                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el.clone()))
-                            .unwrap();
-                        partial_assignment
-                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el))
-                            .unwrap();
-                    }
 
-                    if rng.gen() {
-                        let el = Fr::random(&mut rng);
-                        full_assignment
+                        let el_var_ful = full_assignment
                             .alloc_input(|| format!("alloc_input:{},{}", i, k), || Ok(el.clone()))
                             .unwrap();
-                        partial_assignment
-                            .alloc_input(|| format!("alloc_input:{},{}", i, k), || Ok(el))
+                        let el_var_part = partial_assignment
+                            .alloc_input(|| format!("alloc_input:{},{}", i, k), || Ok(el.clone()))
                             .unwrap();
+                            let el_var_part = partial_assignment2
+                            .alloc_input(|| format!("alloc_input:{},{}", i, k), || Ok(el.clone()))
+                            .unwrap();
+                        parents.push(el_var_part);
+
+                        let mut el_double = el.clone();
+                        el_double.add_assign(&el);
+
+                        let el_double_var_ful = full_assignment
+                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el_double.clone()))
+                            .unwrap();
+                        let el_double_var_part = partial_assignment
+                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el_double.clone()))
+                            .unwrap();
+                            let el_double_var_part = partial_assignment2
+                            .alloc(|| format!("alloc:{},{}", i, k), || Ok(el_double.clone()))
+                            .unwrap();
+
+                        full_assignment.enforce(|| "el_double", |lc| lc + el_var_ful + el_var_ful, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + el_double_var_ful);
+                        partial_assignment.enforce(|| "el_double", |lc| lc + el_var_part + el_var_part, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + el_double_var_part);
+                        partial_assignment2.enforce(|| "el_double", |lc| lc + el_var_part + el_var_part, |lc| lc + ProvingAssignment::<Bls12>::one(), |lc| lc + el_double_var_part);
+                        parents.push(el_double_var_part);
                     }
-
-                    // TODO: LinearCombination
+                    partial_assignment.deallocate(com).unwrap();
+                    partial_assignment2.deallocate(com).unwrap();
                 }
 
-                let mut combined = ProvingAssignment::new();
-                combined.alloc_input(|| "one", || Ok(Fr::one())).unwrap();
+                let y = Fr::from_str("4").unwrap();
+                let y_var_ful = full_assignment.alloc(|| "y", || Ok(y.clone())).unwrap();
+                let pa_n = partial_assignments.len();
+                let mut y_var_part = partial_assignments[pa_n - 1].alloc(|| "y", || Ok(y.clone())).unwrap();
 
-                for assignment in partial_assignments.into_iter() {
-                    combined.extend(assignment);
+                let z = Fr::from_str("2").unwrap();
+                let z_var_ful = full_assignment.alloc_input(|| "z", || Ok(z.clone())).unwrap();
+                let mut z_var_part = partial_assignments[pa_n - 1].alloc_input(|| "z", || Ok(z.clone())).unwrap();
+
+                let last_partial = partial_assignments.split_off(pa_n - 1);
+
+                for (i, other_cs) in partial_assignments.into_iter().enumerate() {
+                    base_partial.align_variable(&mut parents[i], 4, 1);
+                    base_partial.aggregate(vec![other_cs]); // aggregate all CSs exept the last one
                 }
-                assert_eq!(combined, full_assignment);
+
+                for (i, other_cs) in partial_assignments2.into_iter().enumerate() {
+                    base_partial.align_variable(&mut parents[i], 1, 0);
+                    base_partial2.aggregate(vec![other_cs]); // aggregate all CSs exept the last one
+                }
+
+                base_partial.align_variable(&mut y_var_part, 1, 0); // align variables form the last CS
+                base_partial.align_variable(&mut z_var_part, 1, 0);
+                base_partial.aggregate(last_partial);
+
+                full_assignment.enforce(|| "y_enforce", |lc| lc + y_var_ful, |lc| lc + z_var_ful, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
+                base_partial.enforce(|| "y_enforce", |lc| lc + y_var_part, |lc| lc + z_var_part, |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
+                //for j in 0..3 {
+                //    full_assignment.enforce(|| "y_enforce", |lc| lc + parents[j] , |lc| lc + parents[count + j], |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
+                    //base_partial.enforce(|| "y_enforce", |lc| lc + parents[j], |lc| lc + parents[count + j], |lc| lc + (Fr::from_str("8").unwrap(), ProvingAssignment::<Bls12>::one()));
+               // } 
+                assert_eq!(full_assignment, base_partial);
             }
         }
     }
