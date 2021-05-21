@@ -358,10 +358,6 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         );
     }
 
-    fn clone(&self) -> Self{
-        panic!("parallel functional (fn clone) in not implemented for {}", std::any::type_name::<Self>())
-    }
-
     /// Return the "one" input variable
     fn one() -> Variable {
         Variable::new_unchecked(Index::Input(0))
@@ -470,13 +466,9 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn aggregate_element) in not implemented for {}", std::any::type_name::<Self>())
     }
 
-    fn part_aggregate_element(&mut self, mut _other: Self::Root, unit: &Self::Root) {
+    fn part_aggregate_element(&mut self, mut _other: Self::Root, _unit: &Self::Root) {
         panic!("parallel functional (fn part_aggregate_element) in not implemented for {}", std::any::type_name::<Self>())
     }
-
-    /*fn part_aggregate(&mut self, mut _other: Vec<Self::Root>, _unit:Vec<Self::Root>) {
-        panic!("parallel functional (fn part_aggregate) in not implemented for {}", std::any::type_name::<Self>())
-    }*/
 
     fn align_variable(&mut self, _v: &mut Variable, _input_shift: usize, _aux_shift: usize) {
         panic!("parallel functional (fn align_variable) in not implemented for {}", std::any::type_name::<Self>())
@@ -490,7 +482,7 @@ pub trait ConstraintSystem<E: ScalarEngine>: Sized + Send {
         panic!("parallel functional (fn get_input_assigment_len) in not implemented for {}", std::any::type_name::<Self>())
     }
 
-    fn get_index(&mut self, v: &mut Variable,) -> usize{
+    fn get_index(&mut self, _v: &mut Variable,) -> usize{
         panic!("parallel functional (fn get_index) in not implemented for {}", std::any::type_name::<Self>())
     }
 
@@ -523,10 +515,6 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
 
     fn one() -> Variable {
         CS::one()
-    }
-
-    fn clone(&self) -> Self {
-        self.clone()
     }
 
     fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>
@@ -595,15 +583,11 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for Name
         self.0.aggregate(other)
     }
 
-    /*fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>) {
-        self.0.part_aggregate(other, unit)
-    }*/
-
     fn aggregate_element(&mut self, other: Self::Root) {
         self.0.aggregate_element(other)
     }
 
-    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: &Self::Root) {
+    fn part_aggregate_element(&mut self, other: Self::Root, unit: &Self::Root) {
         self.0.part_aggregate_element(other, unit)
     }
 
@@ -638,12 +622,6 @@ impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> Drop for Namespace<'a, E, CS>
     }
 }
 
-impl<'a, E: ScalarEngine, CS: ConstraintSystem<E>> PartialEq for Namespace<'a, E, CS> {
-    fn eq(&self, other: &Namespace<'a, E, CS>) -> bool {
-        self.eq(other)
-    }
-}
-
 /// Convenience implementation of ConstraintSystem<E> for mutable references to
 /// constraint systems.
 impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs mut CS {
@@ -651,10 +629,6 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
 
     fn one() -> Variable {
         CS::one()
-    }
-
-    fn clone(&self) -> Self{
-        (**&self).clone()
     }
 
     fn alloc<F, A, AR>(&mut self, annotation: A, f: F) -> Result<Variable, SynthesisError>
@@ -719,15 +693,11 @@ impl<'cs, E: ScalarEngine, CS: ConstraintSystem<E>> ConstraintSystem<E> for &'cs
         (**self).aggregate(other)
     }
 
-    /*fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>) {
-        (**self).part_aggregate(other, unit)
-    }*/
-
     fn aggregate_element(&mut self, other: Self::Root) {
         (**self).aggregate_element(other)
     }
 
-    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: &Self::Root) {
+    fn part_aggregate_element(&mut self, other: Self::Root, unit: &Self::Root) {
         (**self).part_aggregate_element(other, unit)
     }
 
