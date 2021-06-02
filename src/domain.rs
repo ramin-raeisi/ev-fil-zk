@@ -23,7 +23,7 @@ use rayon::current_num_threads;
 use rayon::slice::{ParallelSliceMut, ParallelSlice};
 use rayon::iter::{ParallelIterator, IndexedParallelIterator, IntoParallelRefMutIterator};
 
-use log::{info, warn, error};
+use log::{warn, error};
 
 fn get_disble_gpu() -> usize {
     std::env::var("FIL_ZK_DISABLE_FFT_GPU")
