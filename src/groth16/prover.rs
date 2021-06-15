@@ -140,19 +140,6 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         }
     }
 
-    fn clone(&self) -> Self {
-        ProvingAssignment {
-            a_aux_density: self.a_aux_density.clone(),
-            b_input_density: self.b_input_density.clone(),
-            b_aux_density: self.b_aux_density.clone(),
-            a: self.a.clone(),
-            b: self.b.clone(),
-            c: self.c.clone(),
-            input_assignment: self.input_assignment.clone(),
-            aux_assignment: self.aux_assignment.clone(),
-        }
-    }
-
     fn alloc<F, A, AR>(&mut self, _: A, f: F) -> Result<Variable, SynthesisError>
         where
             F: FnOnce() -> Result<E::Fr, SynthesisError>,
@@ -255,7 +242,7 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.aux_assignment.extend(other.aux_assignment);
     }
 
-    fn extend_from_element(&mut self, mut other: Self, unit: &Self){
+    fn extend_from_element(&mut self, other: Self, unit: &Self){
         self.b_input_density.extend_from_element(other.b_input_density, &unit.b_input_density);
         self.a_aux_density.extend_from_element(other.a_aux_density, &unit.a_aux_density);
         self.b_aux_density.extend_from_element(other.b_aux_density, &unit.b_aux_density);
@@ -330,24 +317,17 @@ impl<E: Engine> ConstraintSystem<E> for ProvingAssignment<E> {
         self.extend(other);
     }
 
-    fn part_aggregate_element(&mut self, mut other: Self::Root, unit: &Self::Root) {
+    fn part_aggregate_element(&mut self, other: Self::Root, unit: &Self::Root) {
         self.extend_from_element(other, unit);
     }
 
-    /*fn part_aggregate(&mut self, mut other: Vec<Self::Root>, unit: Vec<Self::Root>){
-        for (cs, un_cs) in other.into_iter()
-        .zip(unit.into_iter()) {
-            self.extend_from_element(cs, un_cs)
-        }
-    }*/
-
     fn align_variable(&mut self, v: &mut Variable, input_shift: usize, aux_shift: usize,) {
         match v {
-            Variable(Index::Input(i)) => {
+            Variable(Index::Input(_i)) => {
                 *v = Variable(Index::Input(input_shift));
 
             }
-            Variable(Index::Aux(i)) => {
+            Variable(Index::Aux(_i)) => {
                 *v = Variable(Index::Aux(aux_shift));
 
             }

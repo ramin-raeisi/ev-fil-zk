@@ -669,7 +669,7 @@ mod tests {
         env_logger::init();
         let log_cpus = log2_floor(rayon::current_num_threads());
 
-        for log_d in 1..25 {
+        for log_d in 1..=20 {
             let d = 1 << log_d;
 
             let elems = (0..d)
