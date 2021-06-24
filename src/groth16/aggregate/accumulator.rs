@@ -15,6 +15,7 @@ use std::sync::{
     atomic::{AtomicBool, Ordering::SeqCst},
     Arc, Mutex,
 };
+use std::thread;
 
 /// Holds the logic for merging multiple pairing checks of the form
 ///
@@ -47,7 +48,9 @@ impl<E: Engine, R: rand::RngCore + Send> PairingChecks<E, R> {
         let valid = Arc::new(AtomicBool::new(true));
         let valid_copy = valid.clone();
 
-        rayon::spawn(move || {
+        // Spawn this thread outside of the Rayon thread pool, so that it can always receive
+        // messages, even if the thread pool is fully occupied.
+        thread::spawn(move || {
             let mut acc = PairingCheck::new();
             while let Ok(tuple) = merge_recv.recv() {
                 match tuple {
@@ -149,7 +152,17 @@ impl<E: Engine, R: rand::RngCore + Send> PairingChecks<E, R> {
             self.non_random_check_done.store(true, SeqCst);
         };
 
-        self.merge_send.send(Ok(check)).unwrap();
+        // This send is "best effort". If the verification in `verify_tipp_mipp()` identifies
+        // an invalid aggregation, the `self.valid` is set to `false`. That terminates the thread
+        // that receives those messages, hence also the receiving channel is closed.
+        // This means that if the aggrigation is invalid, it is expected that the message cannot
+        // be sent.
+        let sent = self.merge_send.send(Ok(check));
+        if let Err(_) = sent {
+            if self.valid.load(SeqCst) {
+                panic!("Channel was closed although it is still valid.")
+            }
+        }
     }
 
     pub fn verify(self) -> Result<bool, SynthesisError> {
