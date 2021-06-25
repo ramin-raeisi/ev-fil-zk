@@ -76,6 +76,18 @@ The gpu extension contains some env vars that may be set externally to this libr
     env::set_var("FIL_ZK_GPU_MEMORY_PADDING", "0.35");
     ```
 
+- `FIL_ZK_P2_GPU_REUSE`
+
+    - Possible values: `[1, 20]`
+    - Default value: `1`
+
+    How many instances of P2 can use the same GPU in parallel settings. 
+
+    ```rust
+    // Example
+    env::set_var("FIL_ZK_P2_GPU_REUSE", "2");
+    ```
+
 - `FIL_ZK_PARAMS_PRELOAD`
 
     - Possible values: `0, 1`
