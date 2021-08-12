@@ -37,6 +37,18 @@ fn get_disble_gpu() -> usize {
         .unwrap_or(0)
 }
 
+fn get_inplace_fft() -> usize {
+    std::env::var("FIL_ZK_INPLACE_FFT")
+        .and_then(|v| match v.parse() {
+            Ok(val) => Ok(val),
+            Err(_) => {
+                error!("Invalid FIL_ZK_INPLACE_FFT! Defaulting to 0...");
+                Ok(0)
+            }
+        })
+        .unwrap_or(0)
+}
+
 pub struct EvaluationDomain<E: ScalarEngine, G: Group<E>> {
     coeffs: Vec<G>,
     exp: u32,
@@ -393,8 +405,11 @@ pub fn gpu_fft<E: Engine, T: Group<E>>(
     // For compatibility/performance reasons we decided to transmute the array to the desired type
     // as it seems safe and needs less modifications in the current structure of Bellman library.
     let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
-    //gpu::FFTKernel::<E>::inplace_fft(a, omega, log_n)?;
-    gpu::FFTKernel::<E>::radix_fft(a, omega, log_n)?;
+    if get_inplace_fft() {
+        gpu::FFTKernel::<E>::inplace_fft(a, omega, log_n)?;
+    } else {
+        gpu::FFTKernel::<E>::radix_fft(a, omega, log_n)?;
+    }
     Ok(())
 }
 
