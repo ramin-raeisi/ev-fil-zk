@@ -37,8 +37,8 @@ fn get_disble_gpu() -> usize {
         .unwrap_or(0)
 }
 
-fn get_inplace_fft() -> usize {
-    std::env::var("FIL_ZK_INPLACE_FFT")
+fn get_inplace_fft() -> bool {
+    let res = std::env::var("FIL_ZK_INPLACE_FFT")
         .and_then(|v| match v.parse() {
             Ok(val) => Ok(val),
             Err(_) => {
@@ -46,7 +46,8 @@ fn get_inplace_fft() -> usize {
                 Ok(0)
             }
         })
-        .unwrap_or(0)
+        .unwrap_or(0);
+    res != 0
 }
 
 pub struct EvaluationDomain<E: ScalarEngine, G: Group<E>> {
