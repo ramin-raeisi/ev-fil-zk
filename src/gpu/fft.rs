@@ -13,6 +13,7 @@ const MAX_LOG2_RADIX: u32 = 9;
 // Radix256
 const MAX_LOG2_LOCAL_WORK_SIZE: u32 = 8; // 128
 
+#[allow(clippy::upper_case_acronyms)]
 pub struct FFTKernel<E>
 where
     E: Engine,
