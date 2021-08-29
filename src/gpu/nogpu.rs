@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 // This module is compiled instead of `fft.rs` and `multiexp.rs` if `gpu` feature is disabled.
-
+#[allow(clippy::upper_case_acronyms)]
 pub struct FFTKernel<E>(PhantomData<E>)
     where
         E: ScalarEngine;
@@ -14,6 +14,9 @@ impl<E> FFTKernel<E>
     where
         E: ScalarEngine,
 {
+    pub fn create(_: bool) -> GPUResult<FFTKernel<E>> {
+        Err(GPUError::GPUDisabled)
+    }
     pub fn fft(_: &mut [E::Fr], _: &E::Fr, _: u32) -> GPUResult<()> {
         return Err(GPUError::GPUDisabled);
     }
@@ -39,6 +42,10 @@ impl<E> MultiexpKernel<E>
     where
         E: ScalarEngine,
 {
+    pub fn create(_: bool) -> GPUResult<MultiexpKernel<E>> {
+        Err(GPUError::GPUDisabled)
+    }
+
     pub fn multiexp<G>(
         &mut self,
         _: &DevicePool,
@@ -50,7 +57,7 @@ impl<E> MultiexpKernel<E>
         where
             G: CurveAffine,
     {
-        return Err(GPUError::GPUDisabled);
+        Err(GPUError::GPUDisabled)
     }
 }
 

@@ -136,6 +136,9 @@
 // Requires nightly for aarch64
 #![cfg_attr(target_arch = "aarch64", feature(stdsimd))]
 
+#[cfg(all(feature = "pairing", feature = "blst"))]
+compile_error!("pairing and blst features are mutually exclusive. Running with --no-default-features might help.");
+
 #[cfg(test)]
 #[macro_use]
 extern crate hex_literal;
@@ -148,6 +151,7 @@ pub mod gpu;
 pub mod groth16;
 pub mod multiexp;
 pub mod settings;
+pub mod multicore;
 
 pub mod util_cs;
 use ff::{Field, ScalarEngine};
@@ -214,7 +218,7 @@ impl<E: ScalarEngine> LinearCombination<E> {
     pub fn add_unsimplified(mut self, (coeff, var): (E::Fr, Variable)) -> LinearCombination<E> {
         self.0
             .entry(var)
-            .or_insert(E::Fr::zero())
+            .or_insert_with(E::Fr::zero)
             .add_assign(&coeff);
 
         self
@@ -227,7 +231,7 @@ impl<E: ScalarEngine> Add<(E::Fr, Variable)> for LinearCombination<E> {
     fn add(mut self, (coeff, var): (E::Fr, Variable)) -> LinearCombination<E> {
         self.0
             .entry(var)
-            .or_insert(E::Fr::zero())
+            .or_insert_with(E::Fr::zero)
             .add_assign(&coeff);
 
         self
@@ -266,7 +270,10 @@ impl<'a, E: ScalarEngine> Add<&'a LinearCombination<E>> for LinearCombination<E>
 
     fn add(mut self, other: &'a LinearCombination<E>) -> LinearCombination<E> {
         for (var, val) in &other.0 {
-            self.0.entry(*var).or_insert(E::Fr::zero()).add_assign(val);
+            self.0
+                .entry(*var)
+                .or_insert_with(E::Fr::zero)
+                .add_assign(val);
         }
 
         self
@@ -315,6 +322,7 @@ impl<'a, E: ScalarEngine> Sub<(E::Fr, &'a LinearCombination<E>)> for LinearCombi
 
 /// This is an error that could occur during circuit synthesis contexts,
 /// such as CRS generation, proving or verification.
+#[allow(clippy::upper_case_acronyms)]
 #[derive(thiserror::Error, Debug)]
 pub enum SynthesisError {
     /// During synthesis, we lacked knowledge of a variable assignment.
@@ -751,13 +759,11 @@ mod tests {
 
         let mut expected_sums = vec![<Bls12 as ScalarEngine>::Fr::zero(); n];
         let mut total_additions = 0;
-        for i in 0..n {
+        for (i, expected_sum) in expected_sums.iter_mut().enumerate() {
             for _ in 0..i + 1 {
                 let coeff = <Bls12 as ScalarEngine>::Fr::one();
                 lc = lc + (coeff, Variable::new_unchecked(Index::Aux(i)));
-                let mut tmp = expected_sums[i];
-                tmp.add_assign(&coeff);
-                expected_sums[i] = tmp;
+                expected_sum.add_assign(&coeff);
                 total_additions += 1;
             }
         }
