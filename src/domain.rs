@@ -424,7 +424,15 @@ pub fn gpu_mul<E: Engine, T: Group<E>>(
     // The reason of unsafety is same as above.
     let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
     let b = unsafe { std::mem::transmute::<&[Scalar<E>], &[E::Fr]>(b) };
-    gpu::FFTKernel::<E>::mul_sub(a, b, n, false)?;
+    let mut chunk_size = n;
+    if get_inplace_fft() {
+        chunk_size = chunk_size / 2;
+    }
+
+    for (a_chunk, b_chunk) in a.chunks_mut(chunk_size)
+        .zip(b.chunks(chunk_size)) {
+            gpu::FFTKernel::<E>::mul_sub(a_chunk, b_chunk, chunk_size, false)?;
+    }
     Ok(())
 }
 
@@ -436,7 +444,15 @@ pub fn gpu_sub<E: Engine, T: Group<E>>(
     // The reason of unsafety is same as above.
     let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
     let b = unsafe { std::mem::transmute::<&[T], &[E::Fr]>(b) };
-    gpu::FFTKernel::<E>::mul_sub(a, b, n, true)?;
+    let mut chunk_size = n;
+    if get_inplace_fft() {
+        chunk_size = chunk_size / 2;
+    }
+
+    for (a_chunk, b_chunk) in a.chunks_mut(chunk_size)
+        .zip(b.chunks(chunk_size)) {
+            gpu::FFTKernel::<E>::mul_sub(a_chunk, b_chunk, chunk_size, true)?;
+    }
     Ok(())
 }
 
