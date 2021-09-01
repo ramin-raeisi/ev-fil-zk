@@ -179,6 +179,7 @@ impl<E: Engine> ConstraintSystem<E> for KeypairAssembly<E> {
 }
 
 /// Create parameters for a circuit, given some toxic waste.
+#[allow(clippy::too_many_arguments)]
 pub fn generate_parameters<E, C>(
     circuit: C,
     g1: E::G1,
@@ -295,6 +296,7 @@ where
     let mut ic = vec![E::G1::zero(); assembly.num_inputs];
     let mut l = vec![E::G1::zero(); assembly.num_aux];
 
+    #[allow(clippy::too_many_arguments)]
     fn eval<E: Engine>(
         // wNAF window tables
         g1_wnaf: &Wnaf<usize, &[E::G1], &mut Vec<i64>>,
