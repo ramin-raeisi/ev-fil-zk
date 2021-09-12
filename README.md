@@ -42,7 +42,7 @@ The gpu extension contains some env vars that may be set externally to this libr
 - `FIL_ZK_CPU_UTILIZATION`
 
     - Possible values: `[0, 1]` (float)
-    - Default value: `0.2`
+    - Default value: `0`
 
     The proportion of the multi-exponentiation calculation (commit2 phase) that will be moved to CPU in parallel to the GPU. For example, 0.1 = 10% of the calculations are proceeding on CPU. It allows keeping all hardware occupied and decreases C2 timings. To get the best performance, the value of the variable must be higher for configuration with good CPU and weak GPU and vice versa. 
 

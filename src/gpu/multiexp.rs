@@ -310,9 +310,7 @@ impl<E> MultiexpKernel<E>
         let chunks_amount: usize = ((n as f64) / (chunk_size as f64)).ceil() as usize;
         let chunk_idxs: Vec<usize> = (0..chunks_amount).collect();
 
-        crossbeam::scope(|s| {
-            let mut threads = Vec::new();
-            
+        rayon::scope(|s| {
             // concurrent computing
             let (tx_gpu, rx_gpu) = mpsc::channel();
             let (tx_cpu, rx_cpu) = mpsc::channel();
@@ -321,7 +319,7 @@ impl<E> MultiexpKernel<E>
             let cpu_exps = exps.clone();
 
             // GPU calculations
-            threads.push(s.spawn(move |_| {
+            s.spawn(move |_| {
                 let mut result = <G as CurveAffine>::Projective::zero();
                 if n > 0 {
                     result = chunk_idxs.par_iter()
@@ -356,10 +354,10 @@ impl<E> MultiexpKernel<E>
                 }
 
                 tx_gpu.send(result).unwrap();
-            }));
+            });
 
             // CPU calculations
-            threads.push(s.spawn(move |_| {
+            s.spawn(move |_| {
                 info!("CPU run multiexp over {} elements", cpu_n);
 
                 let mut cpu_acc = <G as CurveAffine>::Projective::zero();
@@ -375,11 +373,7 @@ impl<E> MultiexpKernel<E>
                 }
 
                 tx_cpu.send(cpu_acc).unwrap();
-            }));
-
-            for t in threads {
-                t.join().unwrap();
-            }
+            });
 
             let mut acc = <G as CurveAffine>::Projective::zero();
 
@@ -391,7 +385,7 @@ impl<E> MultiexpKernel<E>
             acc.add_assign(&cpu_r);
             
             Ok(acc)
-        }).unwrap()
+        })
     }
 
     pub fn calibrate<G>(program: &opencl::Program, n: usize) -> GPUResult<usize>

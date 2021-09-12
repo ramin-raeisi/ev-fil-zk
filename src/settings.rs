@@ -25,7 +25,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            cpu_utilization: 0.2_f64,
+            cpu_utilization: 0_f64,
             max_window_size: 10_f64,
             work_size_multiplier: 2_f64,
             chunk_size_multiplier: 2_f64,
