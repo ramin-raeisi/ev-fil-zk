@@ -81,6 +81,7 @@ impl<E: Engine> Proof<E> {
 
     pub fn read_many(proof_bytes: &[u8], num_proofs: usize) -> io::Result<Vec<Self>> {
         use rayon::prelude::*;
+
         debug_assert_eq!(proof_bytes.len(), num_proofs * Self::size());
 
         // Decompress and group check in parallel

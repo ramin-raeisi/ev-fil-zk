@@ -424,7 +424,15 @@ pub fn gpu_mul<E: Engine, T: Group<E>>(
     // The reason of unsafety is same as above.
     let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
     let b = unsafe { std::mem::transmute::<&[Scalar<E>], &[E::Fr]>(b) };
-    gpu::FFTKernel::<E>::mul_sub(a, b, n, false)?;
+    let mut chunk_size = n;
+    if get_inplace_fft() {
+        chunk_size = chunk_size / 2;
+    }
+
+    for (a_chunk, b_chunk) in a.chunks_mut(chunk_size)
+        .zip(b.chunks(chunk_size)) {
+            gpu::FFTKernel::<E>::mul_sub(a_chunk, b_chunk, chunk_size, false)?;
+    }
     Ok(())
 }
 
@@ -436,7 +444,15 @@ pub fn gpu_sub<E: Engine, T: Group<E>>(
     // The reason of unsafety is same as above.
     let a = unsafe { std::mem::transmute::<&mut [T], &mut [E::Fr]>(a) };
     let b = unsafe { std::mem::transmute::<&[T], &[E::Fr]>(b) };
-    gpu::FFTKernel::<E>::mul_sub(a, b, n, true)?;
+    let mut chunk_size = n;
+    if get_inplace_fft() {
+        chunk_size = chunk_size / 2;
+    }
+
+    for (a_chunk, b_chunk) in a.chunks_mut(chunk_size)
+        .zip(b.chunks(chunk_size)) {
+            gpu::FFTKernel::<E>::mul_sub(a_chunk, b_chunk, chunk_size, true)?;
+    }
     Ok(())
 }
 
@@ -451,6 +467,7 @@ pub fn gpu_distribute_powers<E: Engine, T: Group<E>>(
     Ok(())
 }
 
+#[allow(clippy::many_single_char_names)]
 pub fn serial_fft<E: ScalarEngine, T: Group<E>>(a: &mut [T], omega: &E::Fr, log_n: u32) {
     fn bitreverse(mut n: u32, l: u32) -> u32 {
         let mut r = 0;
@@ -732,8 +749,7 @@ mod tests {
             } else {
                 parallel_fft(&mut v2.coeffs, &v2.omega, log_d, log_cpus);
             }
-            let cpu_dur =
-                now.elapsed().as_secs() * 1000 as u64 + now.elapsed().subsec_millis() as u64;
+            let cpu_dur = now.elapsed().as_secs() * 1000 + now.elapsed().subsec_millis() as u64;
             println!("CPU ({} cores) took {}ms.", 1 << log_cpus, cpu_dur);
 
             println!("Speedup: x{}", cpu_dur as f32 / gpu_dur as f32);
